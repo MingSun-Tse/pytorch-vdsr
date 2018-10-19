@@ -5,6 +5,8 @@ from scipy.ndimage import imread
 from PIL import Image
 import numpy as np
 import time, math
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description="PyTorch VDSR Demo")
@@ -80,7 +82,7 @@ im_h = colorize(im_h_y[0,:,:], im_b_ycbcr)
 im_gt = Image.fromarray(im_gt_ycbcr, "YCbCr").convert("RGB")
 im_b = Image.fromarray(im_b_ycbcr, "YCbCr").convert("RGB")
 
-print("Scale=",opt.scale)
+print("Scale=", opt.scale)
 print("PSNR_predicted=", psnr_predicted)
 print("PSNR_bicubic=", psnr_bicubic)
 print("It takes {}s for processing".format(elapsed_time))
@@ -97,4 +99,4 @@ ax.set_title("Input(bicubic)")
 ax = plt.subplot("133")
 ax.imshow(im_h)
 ax.set_title("Output(vdsr)")
-plt.show()
+plt.savefig("output.png")
