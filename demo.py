@@ -8,6 +8,7 @@ import time, math
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from model_vdsr import SmallVDSR_16x, VDSR
 
 parser = argparse.ArgumentParser(description="PyTorch VDSR Demo")
 parser.add_argument("--cuda", action="store_true", help="use cuda?")
@@ -15,6 +16,7 @@ parser.add_argument("--model", default="model/model_epoch_50.pth", type=str, hel
 parser.add_argument("--image", default="butterfly_GT", type=str, help="image name")
 parser.add_argument("--scale", default=4, type=int, help="scale factor, Default: 4")
 parser.add_argument("--gpus", default="0", type=str, help="gpu ids (default: 0)")
+parser.add_argument("--mode", default="")
 
 def PSNR(pred, gt, shave_border=0):
     height, width = pred.shape[:2]
@@ -43,14 +45,19 @@ if cuda:
     if not torch.cuda.is_available():
             raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
 
+if opt.mode:
+  assert(opt.model != "")
+  # model = SmallVDSR_16x(opt.model)
+  model = VDSR(opt.model) # test big model
+else:
+  model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 
-model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
-
-im_gt_ycbcr = imread("Set5/" + opt.image + ".bmp", mode="YCbCr")
-im_b_ycbcr = imread("Set5/"+ opt.image + "_scale_"+ str(opt.scale) + ".bmp", mode="YCbCr")
+im_gt_ycbcr = imread("Set5/" + opt.image + ".bmp", mode="YCbCr") # HR baseline
+im_b_ycbcr = imread("Set5/"+ opt.image + "_scale_"+ str(opt.scale) + ".bmp", mode="YCbCr") # LR
     
 im_gt_y = im_gt_ycbcr[:,:,0].astype(float)
 im_b_y = im_b_ycbcr[:,:,0].astype(float)
+im_b_y = im_gt_y # to test
 
 psnr_bicubic = PSNR(im_gt_y, im_b_y,shave_border=opt.scale)
 
@@ -65,10 +72,11 @@ else:
     model = model.cpu()
 
 start_time = time.time()
-out = model(im_input)
+out = model(im_input) if not opt.mode else torch.add(model(im_input), im_input)
 elapsed_time = time.time() - start_time
 
 out = out.cpu()
+
 
 im_h_y = out.data[0].numpy().astype(np.float32)
 

@@ -4,12 +4,15 @@ from torch.autograd import Variable
 import numpy as np
 import time, math, glob
 import scipy.io as sio
+from model_vdsr import SmallVDSR_16x, VDSR
 
 parser = argparse.ArgumentParser(description="PyTorch VDSR Eval")
 parser.add_argument("--cuda", action="store_true", help="use cuda?")
 parser.add_argument("--model", default="model/model_epoch_50.pth", type=str, help="model path")
 parser.add_argument("--dataset", default="Set5", type=str, help="dataset name, Default: Set5")
-parser.add_argument("--gpus", default="0", type=str, help="gpu ids (default: 0)")
+parser.add_argument("--gpus", default=0, type=int, help="gpu ids (default: 0)")
+parser.add_argument("--mode", default="")
+
 
 def PSNR(pred, gt, shave_border=0):
     height, width = pred.shape[:2]
@@ -24,13 +27,17 @@ def PSNR(pred, gt, shave_border=0):
 opt = parser.parse_args()
 cuda = opt.cuda
 
-if cuda:
-    print("=> use gpu id: '{}'".format(opt.gpus))
-    os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus
-    if not torch.cuda.is_available():
-            raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
-
-model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
+# if cuda:
+    # print("=> use gpu id: '{}'".format(opt.gpus))
+    # os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus
+    # if not torch.cuda.is_available():
+            # raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
+if opt.mode:
+  assert(opt.model != "")
+  model = SmallVDSR_16x(opt.model)
+  # model = VDSR(opt.model) # test big model
+else:
+  model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 
 scales = [2,3,4]
 
@@ -59,13 +66,13 @@ for scale in scales:
             im_input = Variable(torch.from_numpy(im_input).float()).view(1, -1, im_input.shape[0], im_input.shape[1])
 
             if cuda:
-                model = model.cuda()
-                im_input = im_input.cuda()
+                model = model.cuda(opt.gpus)
+                im_input = im_input.cuda(opt.gpus)
             else:
                 model = model.cpu()
 
             start_time = time.time()
-            HR = model(im_input)
+            HR = model(im_input) if not opt.mode else torch.add(model(im_input), im_input)
             elapsed_time = time.time() - start_time
             avg_elapsed_time += elapsed_time
 

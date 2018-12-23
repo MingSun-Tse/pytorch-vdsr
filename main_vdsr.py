@@ -26,6 +26,7 @@ parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="We
 parser.add_argument('--pretrained', default='', type=str, help='path to pretrained model (default: none)')
 parser.add_argument("--gpus", default="0", type=str, help="gpu ids (default: 0)")
 parser.add_argument("--num_filter", default=64, type=int)
+parser.add_argument("--train_data", type=str)
 
 weights_path = "./checkpoint"
 TIME_ID = os.environ["SERVER"] + time.strftime("-%Y%m%d-%H%M")
@@ -56,7 +57,7 @@ def main():
   cudnn.benchmark = True
 
   logprint("===> Loading datasets", log)
-  train_set = DatasetFromHdf5("data/train3.h5")
+  train_set = DatasetFromHdf5(opt.train_data)
   training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
 
   logprint("===> Building model", log)
@@ -126,7 +127,7 @@ def train(training_data_loader, optimizer, model, criterion, epoch):
             logprint("===> Epoch[{}]({}/{}): Loss: {:.10f}".format(epoch, iteration, len(training_data_loader), loss.data[0]), log)
 
 def save_checkpoint(model, epoch):
-    model_out_path = "checkpoint/" + "%s_model_epoch_{}.pth".format(TIME_ID, epoch)
+    model_out_path = "checkpoint/" + "{}_model_epoch_{}.pth".format(TIME_ID, epoch)
     state = {"epoch": epoch ,"model": model}
     if not os.path.exists("checkpoint/"):
         os.makedirs("checkpoint/")

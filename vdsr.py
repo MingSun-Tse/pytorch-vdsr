@@ -7,9 +7,9 @@ class Conv_ReLU_Block(nn.Module):
         super(Conv_ReLU_Block, self).__init__()
         self.conv = nn.Conv2d(in_channels=num_filter, out_channels=num_filter, kernel_size=3, stride=1, padding=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
-        
+
     def forward(self, x):
-        return self.relu(self.conv(x))
+      return self.relu(self.conv(x))
         
 class Net(nn.Module):
     def __init__(self, num_filter=64):
