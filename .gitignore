@@ -7,4 +7,5 @@
 *.pth
 *pyc
 *.h5
+/Experiments
 
