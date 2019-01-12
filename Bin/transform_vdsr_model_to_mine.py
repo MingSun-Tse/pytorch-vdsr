@@ -7,7 +7,7 @@ import sys
 original_vdsr_model = sys.argv[1]
 vdsr_params = list(torch.load(original_vdsr_model)["model"].named_parameters())
 
-encoder = SmallVDSR_16x()
+encoder = VDSR() # Change this to your demand
 params = encoder.named_parameters()
 dict_params = dict(params)
 for i in range(len(vdsr_params)):
@@ -17,8 +17,8 @@ for i in range(len(vdsr_params)):
   elif original_tensor_name == "input.weight":
     new_tensor_name = "conv1.weight"
   else:
-    new_tensor_name = "conv%d.weight" % (int(original_tensor_name.split(".")[1])+2)
-  print("original_tensor_name: %s  vs.  new_tensor_name: %s" % (original_tensor_name, new_tensor_name))
+    new_tensor_name = "conv%d.weight" % (int(original_tensor_name.split(".")[1]) + 2)
+  print("===> original_tensor_name: %s  vs.  new_tensor_name: %s" % (original_tensor_name, new_tensor_name))
   dict_params[new_tensor_name].data.copy_(tensor_data)
 
 encoder.load_state_dict(dict_params)

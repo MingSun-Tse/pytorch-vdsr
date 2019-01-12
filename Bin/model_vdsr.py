@@ -59,18 +59,12 @@ class VDSR(nn.Module):
     return y
   
   def forward_stem(self, y):
-    out1 = self.relu(self.conv1(y))
-    y = self.relu(self.conv2(out1))
-    out3 = self.relu(self.conv3(y))
-    y = self.relu(self.conv4(out3))
-    out5  = self.relu(self.conv5(y))
-    y = self.relu(self.conv6(out5))
-    out7 = self.relu(self.conv7(y))
-    y = self.relu(self.conv8(out7))
-    out9 = self.relu(self.conv9(y))
-    y = self.relu(self.conv10(out9))
-    out11 = self.relu(self.conv11(y))
-    y = self.relu(self.conv12(out11))
+    out1 = self.relu(self.conv1(y)); y = self.relu(self.conv2(out1))
+    out3 = self.relu(self.conv3(y)); y = self.relu(self.conv4(out3))
+    out5 = self.relu(self.conv5(y)); y = self.relu(self.conv6(out5))
+    out7 = self.relu(self.conv7(y)); y = self.relu(self.conv8(out7))
+    out9 = self.relu(self.conv9(y)); y = self.relu(self.conv10(out9))
+    out11 = self.relu(self.conv11(y)); y = self.relu(self.conv12(out11))
     y = self.relu(self.conv13(y))
     y = self.relu(self.conv14(y))
     y = self.relu(self.conv15(y))
@@ -144,6 +138,7 @@ class SmallVDSR_16x(nn.Module):
     y = self.relu(self.conv19(y))
     y = self.conv20(y)
     return out1_aux, out3_aux, out5_aux, out7_aux, out9_aux, out11_aux, y
+    
   def forward(self, y):
     y = self.relu(self.conv1(y))
     y = self.relu(self.conv2(y))

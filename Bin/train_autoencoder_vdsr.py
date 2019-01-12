@@ -70,7 +70,7 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         # -----------------------------------------------------
         
         optimizer.zero_grad()
-        loss.backward() 
+        loss.backward()
         nn.utils.clip_grad_norm(model.parameters(),args.clip) 
         optimizer.step()
 
@@ -116,6 +116,7 @@ if __name__ == "__main__":
   parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="Weight decay, Default: 1e-4")
   parser.add_argument('--pretrained', default='', type=str, help='path to pretrained model (default: none)')
   parser.add_argument("--num_filter", default=64, type=int)
+  parser.add_argument("--debug", action="store_true")
   args = parser.parse_args()
 
   # Set up data
@@ -139,7 +140,7 @@ if __name__ == "__main__":
       os.makedirs(weights_path)
   TIME_ID = os.environ["SERVER"] + time.strftime("-%Y%m%d-%H%M")
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
-  log = open(log_path, "w+")
+  log = sys.stdout if args.debug else open(log_path, "w+")
   
   # Set up model
   model = Autoencoders[args.mode](args.e1, args.e2)

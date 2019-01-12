@@ -42,11 +42,12 @@ def visualize_luminace(y, save_path=None):
 parser = argparse.ArgumentParser(description="PyTorch VDSR Demo")
 parser.add_argument("--cuda", action="store_true", help="use cuda?")
 parser.add_argument("--model", default="model/model_epoch_50.pth", type=str, help="model path")
-parser.add_argument("--image", default="butterfly_GT", type=str, help="image name")
 parser.add_argument("--scale", default=4, type=int, help="scale factor, Default: 4")
 parser.add_argument("--gpus", default="0", type=str, help="gpu ids (default: 0)")
 parser.add_argument("-m", "--mode", default="")
-parser.add_argument("--test_data", default="../Data/test_data/Set5")
+parser.add_argument("--in_gt_img")
+parser.add_argument("--in_lr_img")
+parser.add_argument("--out_hr_img")
 opt = parser.parse_args()
 cuda = opt.cuda
 
@@ -63,9 +64,9 @@ if opt.mode:
 else:
   model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 
-im_gt_ycbcr = imread(pjoin(opt.test_data, opt.image + ".bmp"), mode="YCbCr") # HR baseline
-im_b_ycbcr = imread(pjoin(opt.test_data, opt.image + "_scale_"+ str(opt.scale) + ".bmp"), mode="YCbCr") # LR
-    
+im_gt_ycbcr = imread(opt.in_gt_img, mode="YCbCr") # HR baseline
+im_b_ycbcr  = imread(opt.in_lr_img, mode="YCbCr") # LR
+
 im_gt_y = im_gt_ycbcr[:,:,0].astype(float)
 im_b_y = im_b_ycbcr[:,:,0].astype(float)
 visualize_luminace(im_gt_y.astype(np.uint8), "luminance_gt.png")
@@ -88,8 +89,6 @@ out = torch.add(model(im_input), im_input) if opt.mode else model(im_input) # co
 elapsed_time = time.time() - start_time
 
 out = out.cpu()
-
-
 im_h_y = out.data[0].numpy().astype(np.float32)
 
 im_h_y = im_h_y * 255.
@@ -102,6 +101,7 @@ psnr_predicted = PSNR(im_gt_y, im_h_y[0,:,:], shave_border=opt.scale)
 im_h = colorize(im_h_y[0,:,:], im_b_ycbcr)
 im_gt = Image.fromarray(im_gt_ycbcr, "YCbCr").convert("RGB")
 im_b = Image.fromarray(im_b_ycbcr, "YCbCr").convert("RGB")
+im_h.save(opt.out_hr_img)
 
 print("Scale=", opt.scale)
 print("PSNR_predicted=", psnr_predicted)
