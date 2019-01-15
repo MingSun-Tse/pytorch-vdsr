@@ -89,9 +89,9 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
           # format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss1={:.5f} ploss2={:.5f} ploss3={:.5f} ploss4={:.5f} ploss5={:.5f} ({:.3f}s/step)"
           # logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), iloss.data.cpu().numpy(), ploss1.data.cpu().numpy()), log), ploss2.data.cpu().numpy(),
               # ploss3.data.cpu().numpy(), ploss4.data.cpu().numpy(), ploss5.data.cpu().numpy(), (time.time()-t1)/SHOW_INTERVAL), log)
-          format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss_1={:.5f} ploss_2={:.5f} ploss_3={:.5f} ({:.3f}s/step)"
+          format_str = "E{}S{} loss={:.3f} | GT_iloss={:.5f} | ploss_1={:.5f} ploss_2={:.5f} ploss_3={:.5f} ({:.3f}s/step)"
           logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), \
-              iloss.data.cpu().numpy(), \
+              GT_iloss.data.cpu().numpy(), \
               ploss1_1.data.cpu().numpy(), ploss1_2.data.cpu().numpy(), ploss1_3.data.cpu().numpy(), \
               (time.time()-t1)/SHOW_INTERVAL), log)
           global t1; t1 = time.time()
@@ -112,16 +112,16 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Autoencoder")
   parser.add_argument('--train_data', type=str, help='the directory of train images', default="../Data/train_data/train.h5")
   parser.add_argument('--test_data', type=str, help='the directory of test images', default="../Data/test_data")
-  parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default=None)
+  parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default="model/64filter_192-20181019-0832_E50.pth")
   parser.add_argument('--e2', type=str, help='path of pretrained encoder2', default=None)
   parser.add_argument('-d', '--decoder', type=str, help='path of pretrained decoder', default=None)
-  parser.add_argument('-g', '--gpu', type=str, help="which gpu to run on. default is 0", default="0")
+  parser.add_argument('-g', '--gpu', type=int, help="which gpu to run on. default is 0", default="0")
   parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=128)
   parser.add_argument('--lr', type=float, help='learning rate', default=0.1)
   parser.add_argument('--ploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
   parser.add_argument('--dploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
   parser.add_argument('--iloss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
-  parser.add_argument('-p', '--project_name', type=str, help='the name of project, to save logs etc., will be set in directory, "Experiments"')
+  parser.add_argument('-p', '--project_name', type=str, default="test", help='the name of project, to save logs etc., will be set in directory, "Experiments"')
   parser.add_argument('-r', '--resume', action='store_true', help='if resume, default=False')
   parser.add_argument('-m', '--mode', type=str, help='the training mode name.')
   parser.add_argument('--epoch', type=int, default=50)
@@ -132,7 +132,7 @@ if __name__ == "__main__":
   parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="Weight decay, Default: 1e-4")
   parser.add_argument('--pretrained', default='', type=str, help='path to pretrained model (default: none)')
   parser.add_argument("--num_filter", default=64, type=int)
-  parser.add_argument("--debug", action="store_true")
+  parser.add_argument("--debug", action="store_false")
   args = parser.parse_args()
 
   # Set up data
@@ -158,14 +158,14 @@ if __name__ == "__main__":
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
   log = sys.stdout if args.debug else open(log_path, "w+")
   
-  logprint("=> use gpu id: '{}'".format(args.gpu), log)
-  os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-  if not torch.cuda.is_available():
-    raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
+  # logprint("=> use gpu id: '{}'".format(args.gpu), log)
+  # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+  # if not torch.cuda.is_available():
+    # raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
 
   # Set up model
   model = Autoencoders[args.mode](args.e1, args.e2)
-  model.cuda()
+  model.cuda(args.gpu)
 
   # print setting for later check
   logprint(str(args._get_kwargs()), log)
@@ -185,7 +185,7 @@ if __name__ == "__main__":
   t1 = time.time()
   loss_log = []
   num_stage = int(args.mode[0])
-  ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
+  ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda(args.gpu)
   for epoch in range(1, args.epoch+1):
     train(training_data_loader, optimizer, model, loss_func, epoch, args, log)
     save_checkpoint(model, epoch, TIME_ID, weights_path, args)
