@@ -48,25 +48,36 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         
         # -----------------------------------------------------
         # deeply-supervised perceptual loss
-        feats, feats2, HR_predicted, feats3 = model(input)
-        # ploss1 = loss_func(feats2[0], feats[0].data) * args.ploss_weight
-        # ploss2 = loss_func(feats2[1], feats[1].data) * args.ploss_weight * 0.1
-        # ploss3 = loss_func(feats2[2], feats[2].data) * args.ploss_weight
-        # ploss4 = loss_func(feats2[3], feats[3].data) * args.ploss_weight
-        # ploss5 = loss_func(feats2[4], feats[4].data) * args.ploss_weight
-        # ploss6 = loss_func(feats2[5], feats[5].data) * args.ploss_weight
-        # ploss1 = loss_func(feats2, feats.data) * args.ploss_weight
+        feats_1, feats2_1, predictedHR_1, predictedHR2_1, \
+        feats_2, feats2_2, predictedHR_2, predictedHR2_2, \
+        feats_3, feats2_3, predictedHR_3, predictedHR2_3 = model(input)
         
-        # dploss1 = loss_func(feats3[0], feats[0].data) * args.dploss_weight
-        # dploss2 = loss_func(feats3[1], feats[1].data) * args.dploss_weight * 0.1
-        # dploss3 = loss_func(feats3[2], feats[2].data) * args.dploss_weight
-        # dploss4 = loss_func(feats3[3], feats[3].data) * args.dploss_weight
-        # dploss5 = loss_func(feats3[4], feats[4].data) * args.dploss_weight
-        # dploss6 = loss_func(feats3[5], feats[5].data) * args.dploss_weight
+        ploss1_1 = loss_func(feats2_1[0], feats_1[0].data) * args.ploss_weight
+        ploss2_1 = loss_func(feats2_1[1], feats_1[1].data) * args.ploss_weight
+        ploss3_1 = loss_func(feats2_1[2], feats_1[2].data) * args.ploss_weight
+        ploss4_1 = loss_func(feats2_1[3], feats_1[3].data) * args.ploss_weight
+        ploss5_1 = loss_func(feats2_1[4], feats_1[4].data) * args.ploss_weight
         
-        ploss1 = loss_func(feats2, feats.data) * args.ploss_weight
-        iloss = loss_func(HR_predicted, target) * args.iloss_weight
-        loss = iloss + ploss1 #+ ploss2 + ploss3 + ploss4 + ploss5 #+ dploss1 + dploss2 + dploss3 + dploss4 + dploss5
+        ploss1_2 = loss_func(feats2_2[0], feats_2[0].data) * args.ploss_weight
+        ploss2_2 = loss_func(feats2_2[1], feats_2[1].data) * args.ploss_weight
+        ploss3_2 = loss_func(feats2_2[2], feats_2[2].data) * args.ploss_weight
+        ploss4_2 = loss_func(feats2_2[3], feats_2[3].data) * args.ploss_weight
+        ploss5_2 = loss_func(feats2_2[4], feats_2[4].data) * args.ploss_weight
+        
+        ploss1_3 = loss_func(feats2_3[0], feats_3[0].data) * args.ploss_weight
+        ploss2_3 = loss_func(feats2_3[1], feats_3[1].data) * args.ploss_weight
+        ploss3_3 = loss_func(feats2_3[2], feats_3[2].data) * args.ploss_weight
+        ploss4_3 = loss_func(feats2_3[3], feats_3[3].data) * args.ploss_weight
+        ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * args.ploss_weight
+        
+        HR_iloss_1 = loss_func(predictedHR2_1, predictedHR_1.data) * args.iloss_weight
+        HR_iloss_2 = loss_func(predictedHR2_2, predictedHR_2.data) * args.iloss_weight
+        HR_iloss_3 = loss_func(predictedHR2_3, predictedHR_3.data) * args.iloss_weight
+        GT_iloss   = loss_func(predictedHR2_1, target.data)        * args.iloss_weight
+        loss = ploss1_1 + ploss2_1 + ploss3_1 + ploss4_1 + ploss5_1 + \
+               ploss1_2 + ploss2_2 + ploss3_2 + ploss4_2 + ploss5_2 + \
+               ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3 + \
+               HR_iloss_1 + HR_iloss_2 + HR_iloss_3 + GT_iloss
         # -----------------------------------------------------
         
         optimizer.zero_grad()
@@ -75,9 +86,14 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         optimizer.step()
 
         if step % SHOW_INTERVAL == 0:
-          format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss1={:.5f}" #ploss2={:.5f} ploss3={:.5f} ploss4={:.5f} ploss5={:.5f} ({:.3f}s/step)"
-          logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), iloss.data.cpu().numpy(), ploss1.data.cpu().numpy()), log)#, ploss2.data.cpu().numpy(),
-              #ploss3.data.cpu().numpy(), ploss4.data.cpu().numpy(), ploss5.data.cpu().numpy(), (time.time()-t1)/SHOW_INTERVAL), log)
+          # format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss1={:.5f} ploss2={:.5f} ploss3={:.5f} ploss4={:.5f} ploss5={:.5f} ({:.3f}s/step)"
+          # logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), iloss.data.cpu().numpy(), ploss1.data.cpu().numpy()), log), ploss2.data.cpu().numpy(),
+              # ploss3.data.cpu().numpy(), ploss4.data.cpu().numpy(), ploss5.data.cpu().numpy(), (time.time()-t1)/SHOW_INTERVAL), log)
+          format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss_1={:.5f} ploss_2={:.5f} ploss_3={:.5f} ({:.3f}s/step)"
+          logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), \
+              iloss.data.cpu().numpy(), \
+              ploss1_1.data.cpu().numpy(), ploss1_2.data.cpu().numpy(), ploss1_3.data.cpu().numpy(), \
+              (time.time()-t1)/SHOW_INTERVAL), log)
           global t1; t1 = time.time()
 
 def save_checkpoint(ae, epoch, TIME_ID, weights_path, args):
@@ -99,7 +115,7 @@ if __name__ == "__main__":
   parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default=None)
   parser.add_argument('--e2', type=str, help='path of pretrained encoder2', default=None)
   parser.add_argument('-d', '--decoder', type=str, help='path of pretrained decoder', default=None)
-  parser.add_argument('-g', '--gpu', type=int, help="which gpu to run on. default is 0", default=0)
+  parser.add_argument('-g', '--gpu', type=str, help="which gpu to run on. default is 0", default="0")
   parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=128)
   parser.add_argument('--lr', type=float, help='learning rate', default=0.1)
   parser.add_argument('--ploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
@@ -142,9 +158,14 @@ if __name__ == "__main__":
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
   log = sys.stdout if args.debug else open(log_path, "w+")
   
+  logprint("=> use gpu id: '{}'".format(args.gpu), log)
+  os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+  if not torch.cuda.is_available():
+    raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
+
   # Set up model
   model = Autoencoders[args.mode](args.e1, args.e2)
-  model.cuda(args.gpu)
+  model.cuda()
 
   # print setting for later check
   logprint(str(args._get_kwargs()), log)
@@ -164,7 +185,7 @@ if __name__ == "__main__":
   t1 = time.time()
   loss_log = []
   num_stage = int(args.mode[0])
-  ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda(args.gpu)
+  ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
   for epoch in range(1, args.epoch+1):
     train(training_data_loader, optimizer, model, loss_func, epoch, args, log)
     save_checkpoint(model, epoch, TIME_ID, weights_path, args)
