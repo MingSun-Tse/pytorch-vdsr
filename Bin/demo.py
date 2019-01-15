@@ -10,8 +10,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import imsave
 from model_vdsr import SmallVDSR_16x, VDSR
+import cv2
 pjoin = os.path.join
 
+def sharpen(in_image):
+    k = -0.4 # original k = -1. The larger abs(k), the sharp the result.
+    kernel = np.array([[0, k, 0], [k, -4*k+1, k], [0, k, 0]], np.float32) # sharpen
+    dst = cv2.filter2D(in_image, -1, kernel=kernel)
+    return dst
 
 def PSNR(pred, gt, shave_border=0):
     height, width = pred.shape[:2]
@@ -48,14 +54,15 @@ parser.add_argument("-m", "--mode", default="")
 parser.add_argument("--in_gt_img")
 parser.add_argument("--in_lr_img")
 parser.add_argument("--out_hr_img")
+parser.add_argument("--sharpen", action="store_true")
 opt = parser.parse_args()
 cuda = opt.cuda
 
 if cuda:
-    print("=> use gpu id: '{}'".format(opt.gpus))
-    os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus
-    if not torch.cuda.is_available():
-            raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
+  print("=> use gpu id: '{}'".format(opt.gpus))
+  os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus
+  if not torch.cuda.is_available():
+    raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
 
 if opt.mode:
   assert(opt.model != "")
@@ -64,13 +71,13 @@ if opt.mode:
 else:
   model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 
-im_gt_ycbcr = imread(opt.in_gt_img, mode="YCbCr") # HR baseline
+im_gt_ycbcr = imread(opt.in_gt_img, mode="YCbCr") # Ground Truth
 im_b_ycbcr  = imread(opt.in_lr_img, mode="YCbCr") # LR
 
 im_gt_y = im_gt_ycbcr[:,:,0].astype(float)
 im_b_y = im_b_ycbcr[:,:,0].astype(float)
-visualize_luminace(im_gt_y.astype(np.uint8), "luminance_gt.png")
-visualize_luminace(im_b_y.astype(np.uint8), "luminance_bi.png")
+# visualize_luminace(im_gt_y.astype(np.uint8), "luminance_gt.png")
+# visualize_luminace(im_b_y.astype(np.uint8), "luminance_bi.png")
 
 psnr_bicubic = PSNR(im_gt_y, im_b_y, shave_border=opt.scale)
 
@@ -94,18 +101,18 @@ im_h_y = out.data[0].numpy().astype(np.float32)
 im_h_y = im_h_y * 255.
 im_h_y[im_h_y < 0] = 0
 im_h_y[im_h_y > 255.] = 255.
-visualize_luminace(im_h_y[0,:,:].astype(np.uint8), "luminance_hr.png")
+# visualize_luminace(im_h_y[0,:,:].astype(np.uint8), "luminance_hr.png")
 
 psnr_predicted = PSNR(im_gt_y, im_h_y[0,:,:], shave_border=opt.scale)
 
-im_h = colorize(im_h_y[0,:,:], im_b_ycbcr)
+im_h = colorize(im_h_y[0,:,:], sharpen(im_b_ycbcr)) if opt.sharpen else colorize(im_h_y[0,:,:], im_b_ycbcr)
 im_gt = Image.fromarray(im_gt_ycbcr, "YCbCr").convert("RGB")
 im_b = Image.fromarray(im_b_ycbcr, "YCbCr").convert("RGB")
 im_h.save(opt.out_hr_img)
 
 print("Scale=", opt.scale)
-print("PSNR_predicted=", psnr_predicted)
-print("PSNR_bicubic=", psnr_bicubic)
+print("PSNR_predicted={:.4f}".format(psnr_predicted))
+print("PSNR_bicubic={:.4f}".format(psnr_bicubic))
 print("It takes {}s for processing".format(elapsed_time))
 
 fig = plt.figure()

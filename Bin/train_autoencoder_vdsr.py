@@ -71,7 +71,7 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         
         optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm(model.parameters(),args.clip) 
+        nn.utils.clip_grad_norm(model.parameters(), args.clip) 
         optimizer.step()
 
         if step % SHOW_INTERVAL == 0:
