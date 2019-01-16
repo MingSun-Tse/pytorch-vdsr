@@ -32,7 +32,7 @@ def adjust_learning_rate(epoch, args):
     return lr
 
 def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
-    lr = adjust_learning_rate(epoch-1, args)
+    lr = adjust_learning_rate(epoch, args)
   
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
@@ -53,22 +53,22 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         feats_3, feats2_3, predictedHR_3, predictedHR2_3 = model(input)
         
         ploss1_1 = loss_func(feats2_1[0], feats_1[0].data) * args.ploss_weight
-        ploss2_1 = loss_func(feats2_1[1], feats_1[1].data) * args.ploss_weight
-        ploss3_1 = loss_func(feats2_1[2], feats_1[2].data) * args.ploss_weight
+        ploss2_1 = loss_func(feats2_1[1], feats_1[1].data) * args.ploss_weight * 0.01
+        ploss3_1 = loss_func(feats2_1[2], feats_1[2].data) * args.ploss_weight * 0.1
         ploss4_1 = loss_func(feats2_1[3], feats_1[3].data) * args.ploss_weight
-        ploss5_1 = loss_func(feats2_1[4], feats_1[4].data) * args.ploss_weight
+        ploss5_1 = loss_func(feats2_1[4], feats_1[4].data) * args.ploss_weight * 100
         
         ploss1_2 = loss_func(feats2_2[0], feats_2[0].data) * args.ploss_weight
-        ploss2_2 = loss_func(feats2_2[1], feats_2[1].data) * args.ploss_weight
-        ploss3_2 = loss_func(feats2_2[2], feats_2[2].data) * args.ploss_weight
+        ploss2_2 = loss_func(feats2_2[1], feats_2[1].data) * args.ploss_weight * 0.01
+        ploss3_2 = loss_func(feats2_2[2], feats_2[2].data) * args.ploss_weight * 0.1
         ploss4_2 = loss_func(feats2_2[3], feats_2[3].data) * args.ploss_weight
-        ploss5_2 = loss_func(feats2_2[4], feats_2[4].data) * args.ploss_weight
+        ploss5_2 = loss_func(feats2_2[4], feats_2[4].data) * args.ploss_weight * 100
         
         ploss1_3 = loss_func(feats2_3[0], feats_3[0].data) * args.ploss_weight
-        ploss2_3 = loss_func(feats2_3[1], feats_3[1].data) * args.ploss_weight
-        ploss3_3 = loss_func(feats2_3[2], feats_3[2].data) * args.ploss_weight
+        ploss2_3 = loss_func(feats2_3[1], feats_3[1].data) * args.ploss_weight * 0.01
+        ploss3_3 = loss_func(feats2_3[2], feats_3[2].data) * args.ploss_weight * 0.1
         ploss4_3 = loss_func(feats2_3[3], feats_3[3].data) * args.ploss_weight
-        ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * args.ploss_weight
+        ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * args.ploss_weight * 100
         
         HR_iloss_1 = loss_func(predictedHR2_1, predictedHR_1.data) * args.iloss_weight
         HR_iloss_2 = loss_func(predictedHR2_2, predictedHR_2.data) * args.iloss_weight
@@ -89,10 +89,15 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
           # format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss1={:.5f} ploss2={:.5f} ploss3={:.5f} ploss4={:.5f} ploss5={:.5f} ({:.3f}s/step)"
           # logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), iloss.data.cpu().numpy(), ploss1.data.cpu().numpy()), log), ploss2.data.cpu().numpy(),
               # ploss3.data.cpu().numpy(), ploss4.data.cpu().numpy(), ploss5.data.cpu().numpy(), (time.time()-t1)/SHOW_INTERVAL), log)
-          format_str = "E{}S{} loss={:.3f} | GT_iloss={:.5f} | ploss_1={:.5f} ploss_2={:.5f} ploss_3={:.5f} ({:.3f}s/step)"
+          format_str = "E{}S{} loss={:.3f} | iloss=({:.3f} | {:.3f} {:.3f} {:.3f}) | ploss1=({:.3f} {:.3f} {:.3f}) | \
+ploss2=({:.3f} {:.3f} {:.3f}) | ploss3=({:.3f} {:.3f} {:.3f}) | ploss4=({:.3f} {:.3f} {:.3f}) | ploss5=({:.3f} {:.3f} {:.3f}) ({:.2f}s/step)"
           logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), \
-              GT_iloss.data.cpu().numpy(), \
+              GT_iloss.data.cpu().numpy(), HR_iloss_1.data.cpu().numpy(), HR_iloss_2.data.cpu().numpy(), HR_iloss_3.data.cpu().numpy(), \
               ploss1_1.data.cpu().numpy(), ploss1_2.data.cpu().numpy(), ploss1_3.data.cpu().numpy(), \
+              ploss2_1.data.cpu().numpy(), ploss2_2.data.cpu().numpy(), ploss2_3.data.cpu().numpy(), \
+              ploss3_1.data.cpu().numpy(), ploss3_2.data.cpu().numpy(), ploss3_3.data.cpu().numpy(), \
+              ploss4_1.data.cpu().numpy(), ploss4_2.data.cpu().numpy(), ploss4_3.data.cpu().numpy(), \
+              ploss5_1.data.cpu().numpy(), ploss5_2.data.cpu().numpy(), ploss5_3.data.cpu().numpy(), \
               (time.time()-t1)/SHOW_INTERVAL), log)
           global t1; t1 = time.time()
 
@@ -132,7 +137,7 @@ if __name__ == "__main__":
   parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="Weight decay, Default: 1e-4")
   parser.add_argument('--pretrained', default='', type=str, help='path to pretrained model (default: none)')
   parser.add_argument("--num_filter", default=64, type=int)
-  parser.add_argument("--debug", action="store_false")
+  parser.add_argument("--debug", action="store_true")
   args = parser.parse_args()
 
   # Set up data
@@ -186,7 +191,7 @@ if __name__ == "__main__":
   loss_log = []
   num_stage = int(args.mode[0])
   ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda(args.gpu)
-  for epoch in range(1, args.epoch+1):
+  for epoch in range(args.epoch):
     train(training_data_loader, optimizer, model, loss_func, epoch, args, log)
     save_checkpoint(model, epoch, TIME_ID, weights_path, args)
   log.close()
