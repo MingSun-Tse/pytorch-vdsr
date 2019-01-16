@@ -2,6 +2,7 @@ from __future__ import print_function
 import sys
 import os
 pjoin = os.path.join
+os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[sys.argv.index("--gpu") + 1]
 import shutil
 import time
 import argparse
@@ -40,11 +41,11 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
     logprint("Epoch = {}, lr = {}".format(epoch, optimizer.param_groups[0]["lr"]), log)
 
     model.train()
-    ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda(args.gpu)
+    ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
     for step, batch in enumerate(training_data_loader, 1):
         input, target = Variable(batch[0]), Variable(batch[1], requires_grad=False)
-        input = input.cuda(args.gpu)
-        target = target.cuda(args.gpu)
+        input = input.cuda()
+        target = target.cuda()
         
         # -----------------------------------------------------
         # deeply-supervised perceptual loss
@@ -120,18 +121,16 @@ if __name__ == "__main__":
   parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default="model/64filter_192-20181019-0832_E50.pth")
   parser.add_argument('--e2', type=str, help='path of pretrained encoder2', default=None)
   parser.add_argument('-d', '--decoder', type=str, help='path of pretrained decoder', default=None)
-  parser.add_argument('-g', '--gpu', type=int, help="which gpu to run on. default is 0", default="0")
+  parser.add_argument('--gpu', type=str, help="which gpu to run on. default is 0", default="0")
   parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=128)
   parser.add_argument('--lr', type=float, help='learning rate', default=0.1)
   parser.add_argument('--ploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
-  parser.add_argument('--dploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
   parser.add_argument('--iloss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
   parser.add_argument('-p', '--project_name', type=str, default="test", help='the name of project, to save logs etc., will be set in directory, "Experiments"')
   parser.add_argument('-r', '--resume', action='store_true', help='if resume, default=False')
   parser.add_argument('-m', '--mode', type=str, help='the training mode name.')
   parser.add_argument('--epoch', type=int, default=50)
   parser.add_argument("--step", type=int, default=10, help="Sets the learning rate to the initial LR decayed by momentum every n epochs, Default: n=10")
-  parser.add_argument("--cuda", action="store_false", help="Use cuda?")
   parser.add_argument("--clip", type=float, default=0.4, help="Clipping Gradients. Default=0.4")
   parser.add_argument("--momentum", default=0.9, type=float, help="Momentum, Default: 0.9")
   parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="Weight decay, Default: 1e-4")
@@ -162,15 +161,11 @@ if __name__ == "__main__":
   TIME_ID = os.environ["SERVER"] + time.strftime("-%Y%m%d-%H%M")
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
   log = sys.stdout if args.debug else open(log_path, "w+")
-  
-  # logprint("=> use gpu id: '{}'".format(args.gpu), log)
-  # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-  # if not torch.cuda.is_available():
-    # raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
+  logprint("=> use gpu id: '{}'".format(args.gpu), log)
 
   # Set up model
   model = Autoencoders[args.mode](args.e1, args.e2)
-  model.cuda(args.gpu)
+  model.cuda()
 
   # print setting for later check
   logprint(str(args._get_kwargs()), log)
@@ -190,12 +185,8 @@ if __name__ == "__main__":
   t1 = time.time()
   loss_log = []
   num_stage = int(args.mode[0])
-  ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda(args.gpu)
+  ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
   for epoch in range(args.epoch):
     train(training_data_loader, optimizer, model, loss_func, epoch, args, log)
     save_checkpoint(model, epoch, TIME_ID, weights_path, args)
   log.close()
-
-  
-
-  
