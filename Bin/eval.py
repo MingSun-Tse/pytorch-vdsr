@@ -51,7 +51,7 @@ for scale in scales:
     for image_name in image_list:
         if str(scale) in image_name:
             count += 1
-            print("Processing ", image_name)
+            # print("Processing ", image_name)
             im_gt_y = sio.loadmat(image_name)['im_gt_y']
             im_b_y = sio.loadmat(image_name)['im_b_y']
                        
@@ -62,9 +62,9 @@ for scale in scales:
             avg_psnr_bicubic += psnr_bicubic
 
             im_input = im_b_y/255.
-            print(im_input.shape)
+            # print(im_input.shape)
             im_input = Variable(torch.from_numpy(im_input).float()).view(1, -1, im_input.shape[0], im_input.shape[1])
-            print(im_input.shape)
+            # print(im_input.shape)
             
             if cuda:
                 model = model.cuda(opt.gpus)
@@ -89,8 +89,4 @@ for scale in scales:
             psnr_predicted = PSNR(im_gt_y, im_h_y,shave_border=scale)
             avg_psnr_predicted += psnr_predicted
 
-    print("Scale=", scale)
-    print("Dataset=", opt.dataset)
-    print("PSNR_predicted=", avg_psnr_predicted/count)
-    print("PSNR_bicubic=", avg_psnr_bicubic/count)
-    print("It takes average {}s for processing".format(avg_elapsed_time/count))
+    print("Scale = {}, PSNR_predicted = {:.3f}, PSNR_bicubic = {:.3f}. It takes ave {:.4f}s for processing".format(scale, avg_psnr_predicted/count, avg_psnr_bicubic/count, avg_elapsed_time/count))

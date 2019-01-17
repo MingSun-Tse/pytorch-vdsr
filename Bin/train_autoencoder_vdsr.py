@@ -2,7 +2,7 @@ from __future__ import print_function
 import sys
 import os
 pjoin = os.path.join
-os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[sys.argv.index("--gpu") + 1]
+os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[sys.argv.index("--gpu") + 1] # The args MUST has an option "--gpu".
 import shutil
 import time
 import argparse
@@ -11,6 +11,7 @@ from PIL import Image
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import glob
 # torch
 import torch
 import torch.nn as nn
@@ -27,6 +28,54 @@ from model_vdsr import Autoencoders
 from utils import logprint
 from dataset import DatasetFromHdf5 # vdsr data loader
 
+def PSNR(pred, gt, shave_border=0):
+    height, width = pred.shape[:2]
+    pred = pred[shave_border:height - shave_border, shave_border:width - shave_border]
+    gt = gt[shave_border:height - shave_border, shave_border:width - shave_border]
+    imdff = pred - gt
+    rmse = math.sqrt(np.mean(imdff ** 2))
+    if rmse == 0:
+        return 100
+    return 20 * math.log10(255.0 / rmse)
+
+    
+def test(model, args, log, epoch):
+  scales = [2, 3, 4]
+  image_list = glob.glob(args.test_data + "/*.*")
+  for scale in scales:
+    avg_psnr_predicted = 0.0
+    avg_psnr_bicubic = 0.0
+    avg_elapsed_time = 0.0
+    count = 0.0
+    for image_name in image_list:
+      if str(scale) in image_name:
+        count += 1
+        # logprint("Processing %s" % image_name, log)
+        im_gt_y = sio.loadmat(image_name)['im_gt_y']
+        im_b_y = sio.loadmat(image_name)['im_b_y']
+                   
+        im_gt_y = im_gt_y.astype(float)
+        im_b_y = im_b_y.astype(float)
+
+        psnr_bicubic = PSNR(im_gt_y, im_b_y, shave_border=scale)
+        avg_psnr_bicubic += psnr_bicubic
+
+        im_input = im_b_y / 255.
+        im_input = Variable(torch.from_numpy(im_input).float()).view(1, -1, im_input.shape[0], im_input.shape[1])
+        im_input = im_input.cuda()
+        
+        HR = model(im_input).cpu()
+        im_h_y = HR.data[0].numpy().astype(np.float32)
+        im_h_y = im_h_y * 255.
+        im_h_y[im_h_y < 0] = 0
+        im_h_y[im_h_y > 255.] = 255.
+        im_h_y = im_h_y[0,:,:]
+
+        psnr_predicted = PSNR(im_gt_y, im_h_y, shave_border=scale)
+        avg_psnr_predicted += psnr_predicted
+
+    logprint("Epoch {} Scale {} PSNR_predicted = {:.4f} PSNR_bicubic = {:.4f}".format(epoch, scale, avg_psnr_predicted/count, avg_psnr_bicubic/count), log)
+    
 def adjust_learning_rate(epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
     lr = args.lr * (0.1 ** (epoch // args.step))
@@ -39,9 +88,10 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         param_group["lr"] = lr
 
     logprint("Epoch = {}, lr = {}".format(epoch, optimizer.param_groups[0]["lr"]), log)
-
+    
     model.train()
     ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
+    layer_ploss_weight = [float(x) for x in args.layer_ploss_weight.split("-")]
     for step, batch in enumerate(training_data_loader, 1):
         input, target = Variable(batch[0]), Variable(batch[1], requires_grad=False)
         input = input.cuda()
@@ -53,32 +103,33 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         feats_2, feats2_2, predictedHR_2, predictedHR2_2, \
         feats_3, feats2_3, predictedHR_3, predictedHR2_3 = model(input)
         
-        ploss1_1 = loss_func(feats2_1[0], feats_1[0].data) * args.ploss_weight
-        ploss2_1 = loss_func(feats2_1[1], feats_1[1].data) * args.ploss_weight * 0.01
-        ploss3_1 = loss_func(feats2_1[2], feats_1[2].data) * args.ploss_weight * 0.1
-        ploss4_1 = loss_func(feats2_1[3], feats_1[3].data) * args.ploss_weight
-        ploss5_1 = loss_func(feats2_1[4], feats_1[4].data) * args.ploss_weight * 100
+        ploss1_1 = loss_func(feats2_1[0], feats_1[0].data) * args.ploss_weight * layer_ploss_weight[0]
+        ploss2_1 = loss_func(feats2_1[1], feats_1[1].data) * args.ploss_weight * layer_ploss_weight[1]
+        ploss3_1 = loss_func(feats2_1[2], feats_1[2].data) * args.ploss_weight * layer_ploss_weight[2]
+        ploss4_1 = loss_func(feats2_1[3], feats_1[3].data) * args.ploss_weight * layer_ploss_weight[3]
+        ploss5_1 = loss_func(feats2_1[4], feats_1[4].data) * args.ploss_weight * layer_ploss_weight[4]
         
-        ploss1_2 = loss_func(feats2_2[0], feats_2[0].data) * args.ploss_weight
-        ploss2_2 = loss_func(feats2_2[1], feats_2[1].data) * args.ploss_weight * 0.01
-        ploss3_2 = loss_func(feats2_2[2], feats_2[2].data) * args.ploss_weight * 0.1
-        ploss4_2 = loss_func(feats2_2[3], feats_2[3].data) * args.ploss_weight
-        ploss5_2 = loss_func(feats2_2[4], feats_2[4].data) * args.ploss_weight * 100
+        ploss1_2 = loss_func(feats2_2[0], feats_2[0].data) * args.ploss_weight * layer_ploss_weight[0]
+        ploss2_2 = loss_func(feats2_2[1], feats_2[1].data) * args.ploss_weight * layer_ploss_weight[1]
+        ploss3_2 = loss_func(feats2_2[2], feats_2[2].data) * args.ploss_weight * layer_ploss_weight[2]
+        ploss4_2 = loss_func(feats2_2[3], feats_2[3].data) * args.ploss_weight * layer_ploss_weight[3]
+        ploss5_2 = loss_func(feats2_2[4], feats_2[4].data) * args.ploss_weight * layer_ploss_weight[4]
         
-        ploss1_3 = loss_func(feats2_3[0], feats_3[0].data) * args.ploss_weight
-        ploss2_3 = loss_func(feats2_3[1], feats_3[1].data) * args.ploss_weight * 0.01
-        ploss3_3 = loss_func(feats2_3[2], feats_3[2].data) * args.ploss_weight * 0.1
-        ploss4_3 = loss_func(feats2_3[3], feats_3[3].data) * args.ploss_weight
-        ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * args.ploss_weight * 100
+        ploss1_3 = loss_func(feats2_3[0], feats_3[0].data) * args.ploss_weight * layer_ploss_weight[0]
+        ploss2_3 = loss_func(feats2_3[1], feats_3[1].data) * args.ploss_weight * layer_ploss_weight[1]
+        ploss3_3 = loss_func(feats2_3[2], feats_3[2].data) * args.ploss_weight * layer_ploss_weight[2]
+        ploss4_3 = loss_func(feats2_3[3], feats_3[3].data) * args.ploss_weight * layer_ploss_weight[3]
+        ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * args.ploss_weight * layer_ploss_weight[4]
         
         HR_iloss_1 = loss_func(predictedHR2_1, predictedHR_1.data) * args.iloss_weight
         HR_iloss_2 = loss_func(predictedHR2_2, predictedHR_2.data) * args.iloss_weight
         HR_iloss_3 = loss_func(predictedHR2_3, predictedHR_3.data) * args.iloss_weight
         GT_iloss   = loss_func(predictedHR2_1, target.data)        * args.iloss_weight
+        
         loss = ploss1_1 + ploss2_1 + ploss3_1 + ploss4_1 + ploss5_1 + \
                ploss1_2 + ploss2_2 + ploss3_2 + ploss4_2 + ploss5_2 + \
-               ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3 + \
-               HR_iloss_1 + HR_iloss_2 + HR_iloss_3 + GT_iloss
+               ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3
+               # HR_iloss_1 + HR_iloss_2 + HR_iloss_3 #+ GT_iloss
         # -----------------------------------------------------
         
         optimizer.zero_grad()
@@ -90,6 +141,7 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
           # format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss1={:.5f} ploss2={:.5f} ploss3={:.5f} ploss4={:.5f} ploss5={:.5f} ({:.3f}s/step)"
           # logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), iloss.data.cpu().numpy(), ploss1.data.cpu().numpy()), log), ploss2.data.cpu().numpy(),
               # ploss3.data.cpu().numpy(), ploss4.data.cpu().numpy(), ploss5.data.cpu().numpy(), (time.time()-t1)/SHOW_INTERVAL), log)
+          
           format_str = "E{}S{} loss={:.3f} | iloss=({:.3f} | {:.3f} {:.3f} {:.3f}) | ploss1=({:.3f} {:.3f} {:.3f}) | \
 ploss2=({:.3f} {:.3f} {:.3f}) | ploss3=({:.3f} {:.3f} {:.3f}) | ploss4=({:.3f} {:.3f} {:.3f}) | ploss5=({:.3f} {:.3f} {:.3f}) ({:.2f}s/step)"
           logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), \
@@ -103,7 +155,6 @@ ploss2=({:.3f} {:.3f} {:.3f}) | ploss3=({:.3f} {:.3f} {:.3f}) | ploss4=({:.3f} {
           global t1; t1 = time.time()
 
 def save_checkpoint(ae, epoch, TIME_ID, weights_path, args):
-  # save model
   model_index = 0
   for model in [ae.e1, ae.e2]:
     model_index += 1
@@ -115,26 +166,25 @@ SAVE_INTERVAL = 1000
 t1 = 0
 if __name__ == "__main__":
   # Passed-in params
-  parser = argparse.ArgumentParser(description="Autoencoder")
+  parser = argparse.ArgumentParser(description="VDSR Compression")
   parser.add_argument('--train_data', type=str, help='the directory of train images', default="../Data/train_data/train.h5")
-  parser.add_argument('--test_data', type=str, help='the directory of test images', default="../Data/test_data")
+  parser.add_argument('--test_data', type=str, help='the directory of test images', default="../Data/test_data/Set5_mat")
   parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default="model/64filter_192-20181019-0832_E50.pth")
   parser.add_argument('--e2', type=str, help='path of pretrained encoder2', default=None)
-  parser.add_argument('-d', '--decoder', type=str, help='path of pretrained decoder', default=None)
   parser.add_argument('--gpu', type=str, help="which gpu to run on. default is 0", default="0")
   parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=128)
   parser.add_argument('--lr', type=float, help='learning rate', default=0.1)
   parser.add_argument('--ploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
   parser.add_argument('--iloss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
-  parser.add_argument('-p', '--project_name', type=str, default="test", help='the name of project, to save logs etc., will be set in directory, "Experiments"')
-  parser.add_argument('-r', '--resume', action='store_true', help='if resume, default=False')
+  parser.add_argument('--layer_ploss_weight', type=str, default="1-0.01-0.1-1-100") # It will be parsed by sep "-".
+  parser.add_argument('-p', '--project', type=str, default="test", help='the name of project, to save logs etc., will be set in the directory "Experiments"')
   parser.add_argument('-m', '--mode', type=str, help='the training mode name.')
   parser.add_argument('--epoch', type=int, default=50)
   parser.add_argument("--step", type=int, default=10, help="Sets the learning rate to the initial LR decayed by momentum every n epochs, Default: n=10")
   parser.add_argument("--clip", type=float, default=0.4, help="Clipping Gradients. Default=0.4")
   parser.add_argument("--momentum", default=0.9, type=float, help="Momentum, Default: 0.9")
   parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="Weight decay, Default: 1e-4")
-  parser.add_argument('--pretrained', default='', type=str, help='path to pretrained model (default: none)')
+  parser.add_argument('--resume', action="store_true")
   parser.add_argument("--num_filter", default=64, type=int)
   parser.add_argument("--debug", action="store_true")
   args = parser.parse_args()
@@ -144,7 +194,7 @@ if __name__ == "__main__":
   training_data_loader = DataLoader(dataset=train_set, num_workers=1, batch_size=args.batch_size, shuffle=True) # 'num_workers' need to be 1, otherwise will cause read error.
   
   # Set up directories and logs etc
-  project_path = pjoin("../Experiments", args.project_name)
+  project_path = pjoin("../Experiments", args.project)
   rec_img_path = pjoin(project_path, "reconstructed_images")
   weights_path = pjoin(project_path, "weights") # to save torch model
   if not args.resume:
@@ -161,7 +211,7 @@ if __name__ == "__main__":
   TIME_ID = os.environ["SERVER"] + time.strftime("-%Y%m%d-%H%M")
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
   log = sys.stdout if args.debug else open(log_path, "w+")
-  logprint("=> use gpu id: '{}'".format(args.gpu), log)
+  logprint("===> use gpu id: {}".format(args.gpu), log)
 
   # Set up model
   model = Autoencoders[args.mode](args.e1, args.e2)
@@ -189,4 +239,4 @@ if __name__ == "__main__":
   for epoch in range(args.epoch):
     train(training_data_loader, optimizer, model, loss_func, epoch, args, log)
     save_checkpoint(model, epoch, TIME_ID, weights_path, args)
-  log.close()
+    test(model, args, log, epoch)
