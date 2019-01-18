@@ -82,7 +82,7 @@ class VDSR(nn.Module):
     y = self.conv20(y)
     # return out1, out3, out5, out7, out9, \
           # out11, out13, out15, out17, out19, y
-    return out1, out5, out9, out13, out17, y
+    return out1, out5, out9, out13, out17, y # the last element of return is the residual
           
     
 class SmallVDSR_16x(nn.Module):
@@ -153,7 +153,7 @@ class SmallVDSR_16x(nn.Module):
     y = self.conv20(y)
     # return out1_aux, out3_aux, out5_aux, out7_aux, out9_aux, \
         # out11_aux, out13_aux, out15_aux, out17_aux, out19_aux, y
-    return out1_aux, out5_aux, out9_aux, out13_aux, out17_aux, y
+    return out1_aux, out5_aux, out9_aux, out13_aux, out17_aux, y # the last element of return is the residual
         
     
   def forward(self, y):

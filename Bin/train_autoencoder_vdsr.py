@@ -12,6 +12,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import glob
+import scipy.io as sio
+import math
 # torch
 import torch
 import torch.nn as nn
@@ -64,7 +66,7 @@ def test(model, args, log, epoch):
         im_input = Variable(torch.from_numpy(im_input).float()).view(1, -1, im_input.shape[0], im_input.shape[1])
         im_input = im_input.cuda()
         
-        HR = model(im_input).cpu()
+        HR = model(im_input)[3].cpu() # index 3 is the predicted HR by small model
         im_h_y = HR.data[0].numpy().astype(np.float32)
         im_h_y = im_h_y * 255.
         im_h_y[im_h_y < 0] = 0
@@ -74,7 +76,7 @@ def test(model, args, log, epoch):
         psnr_predicted = PSNR(im_gt_y, im_h_y, shave_border=scale)
         avg_psnr_predicted += psnr_predicted
 
-    logprint("Epoch {} Scale {} PSNR_predicted = {:.4f} PSNR_bicubic = {:.4f}".format(epoch, scale, avg_psnr_predicted/count, avg_psnr_bicubic/count), log)
+    logprint("Epoch {} Scale {} PSNR_predicted = {:.4f} PSNR_bicubic = {:.4f}".format(epoch+1, scale, avg_psnr_predicted/count, avg_psnr_bicubic/count), log)
     
 def adjust_learning_rate(epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
@@ -121,11 +123,12 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         ploss4_3 = loss_func(feats2_3[3], feats_3[3].data) * args.ploss_weight * layer_ploss_weight[3]
         ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * args.ploss_weight * layer_ploss_weight[4]
         
-        HR_iloss_1 = loss_func(predictedHR2_1, predictedHR_1.data) * args.iloss_weight
-        HR_iloss_2 = loss_func(predictedHR2_2, predictedHR_2.data) * args.iloss_weight
-        HR_iloss_3 = loss_func(predictedHR2_3, predictedHR_3.data) * args.iloss_weight
-        GT_iloss   = loss_func(predictedHR2_1, target.data)        * args.iloss_weight
+        HR_iloss_1 = loss_func(predictedHR2_1, target.data) * args.iloss_weight
+        HR_iloss_2 = loss_func(predictedHR2_2, target.data) * args.iloss_weight
+        HR_iloss_3 = loss_func(predictedHR2_3, target.data) * args.iloss_weight
+        GT_iloss   = loss_func(predictedHR2_1, target.data) * args.iloss_weight
         
+        # loss = ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3
         loss = ploss1_1 + ploss2_1 + ploss3_1 + ploss4_1 + ploss5_1 + \
                ploss1_2 + ploss2_2 + ploss3_2 + ploss4_2 + ploss5_2 + \
                ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3
@@ -194,6 +197,8 @@ if __name__ == "__main__":
   training_data_loader = DataLoader(dataset=train_set, num_workers=1, batch_size=args.batch_size, shuffle=True) # 'num_workers' need to be 1, otherwise will cause read error.
   
   # Set up directories and logs etc
+  if args.debug:
+    args.project = "test" # debug means it's just a test demo
   project_path = pjoin("../Experiments", args.project)
   rec_img_path = pjoin(project_path, "reconstructed_images")
   weights_path = pjoin(project_path, "weights") # to save torch model
