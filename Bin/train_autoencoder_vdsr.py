@@ -27,20 +27,49 @@ import torch.optim as optim
 from torch.autograd import Variable
 # my libs
 from model_vdsr import Autoencoders
-from utils import logprint
 from dataset import DatasetFromHdf5 # vdsr data loader
 
-def PSNR(pred, gt, shave_border=0):
-    height, width = pred.shape[:2]
-    pred = pred[shave_border:height - shave_border, shave_border:width - shave_border]
-    gt = gt[shave_border:height - shave_border, shave_border:width - shave_border]
-    imdff = pred - gt
-    rmse = math.sqrt(np.mean(imdff ** 2))
-    if rmse == 0:
-        return 100
-    return 20 * math.log10(255.0 / rmse)
+def logprint(some_str, f=sys.stdout):
+  print(time.strftime("[%s" % os.getpid() + "-%Y/%m/%d-%H:%M] ") + str(some_str), file=f, flush=True)
 
-    
+def PSNR(pred, gt, shave_border=0):
+  height, width = pred.shape[:2]
+  pred = pred[shave_border:height - shave_border, shave_border:width - shave_border]
+  gt = gt[shave_border:height - shave_border, shave_border:width - shave_border]
+  imdff = pred - gt
+  rmse = math.sqrt(np.mean(imdff ** 2))
+  return 100 if rmse == 0 else 20 * math.log10(255.0 / rmse)
+
+def covariance(x): # batch x channel x height x width
+  batch, channel, height, width = x.size()
+  x = x.view(batch, channel, height*width)
+  x = torch.stack([torch.mm(i.t(), i) for i in x])
+  print(x.shape)
+  return x
+  
+def get_structure_map(residuals):
+  structure_map = []
+  for res in residuals:
+    x, y = np.where(res > 10.0/255)
+    structure_map.append(zip(x, y))
+  return structure_map
+  
+def local_structure(structure_map, residuals, feature_maps, filter_size=5):
+  """
+  """
+  structure_maps = get_structure_map(residuals)
+  batch = len(residuals)
+  out = []
+  for index in range(batch): # feature_maps are in batch
+    smap = structure_maps[index]
+    convar = []
+    for (x, y) in smap:
+      fm = feature_maps[index][:, x-filter_size : x+filter_size, y-filter_size : y+filter_size]
+      convar.append(covariance(fm))
+    out.append(convar)
+  return out
+  
+
 def test(model, args, log, epoch):
   scales = [2, 3, 4]
   image_list = glob.glob(args.test_data + "/*.*")
@@ -76,8 +105,8 @@ def test(model, args, log, epoch):
         psnr_predicted = PSNR(im_gt_y, im_h_y, shave_border=scale)
         avg_psnr_predicted += psnr_predicted
 
-    logprint("Epoch {} Scale {} PSNR_predicted = {:.4f} PSNR_bicubic = {:.4f}".format(epoch+1, scale, avg_psnr_predicted/count, avg_psnr_bicubic/count), log)
-    
+    logprint("Epoch {} Scale {} PSNR_predicted = {:.4f} PSNR_bicubic = {:.4f}".format(epoch, scale, avg_psnr_predicted/count, avg_psnr_bicubic/count), log)
+   
 def adjust_learning_rate(epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
     lr = args.lr * (0.1 ** (epoch // args.step))
@@ -131,8 +160,8 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         # loss = ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3
         loss = ploss1_1 + ploss2_1 + ploss3_1 + ploss4_1 + ploss5_1 + \
                ploss1_2 + ploss2_2 + ploss3_2 + ploss4_2 + ploss5_2 + \
-               ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3
-               # HR_iloss_1 + HR_iloss_2 + HR_iloss_3 #+ GT_iloss
+               ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3 + \
+               HR_iloss_1 + HR_iloss_2 + HR_iloss_3 #+ GT_iloss
         # -----------------------------------------------------
         
         optimizer.zero_grad()
@@ -141,6 +170,7 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         optimizer.step()
 
         if step % SHOW_INTERVAL == 0:
+          global t1
           # format_str = "E{}S{} loss={:.3f} | iloss={:.5f} | ploss1={:.5f} ploss2={:.5f} ploss3={:.5f} ploss4={:.5f} ploss5={:.5f} ({:.3f}s/step)"
           # logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), iloss.data.cpu().numpy(), ploss1.data.cpu().numpy()), log), ploss2.data.cpu().numpy(),
               # ploss3.data.cpu().numpy(), ploss4.data.cpu().numpy(), ploss5.data.cpu().numpy(), (time.time()-t1)/SHOW_INTERVAL), log)
@@ -155,7 +185,7 @@ ploss2=({:.3f} {:.3f} {:.3f}) | ploss3=({:.3f} {:.3f} {:.3f}) | ploss4=({:.3f} {
               ploss4_1.data.cpu().numpy(), ploss4_2.data.cpu().numpy(), ploss4_3.data.cpu().numpy(), \
               ploss5_1.data.cpu().numpy(), ploss5_2.data.cpu().numpy(), ploss5_3.data.cpu().numpy(), \
               (time.time()-t1)/SHOW_INTERVAL), log)
-          global t1; t1 = time.time()
+          t1 = time.time()
 
 def save_checkpoint(ae, epoch, TIME_ID, weights_path, args):
   model_index = 0
@@ -236,12 +266,14 @@ if __name__ == "__main__":
 
   # Optimize
   optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-  loss_func = nn.MSELoss(size_average=False)
+  loss_func = nn.MSELoss(reduction="sum") # old: nn.MSELoss(size_average=False)
   t1 = time.time()
   loss_log = []
   num_stage = int(args.mode[0])
   ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
+  test(model, args, log, -1) # initial test
   for epoch in range(args.epoch):
     train(training_data_loader, optimizer, model, loss_func, epoch, args, log)
     save_checkpoint(model, epoch, TIME_ID, weights_path, args)
     test(model, args, log, epoch)
+    

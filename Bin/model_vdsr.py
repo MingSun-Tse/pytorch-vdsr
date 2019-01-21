@@ -3,6 +3,20 @@ import os
 import torch.nn as nn
 import torch
 
+
+# Load param from model1 to model2
+# For each layer of model2, if model1 has the same layer, then copy the params.
+def load_param(model1_path, model2):
+  dict_param1 = torch.load(model1_path) # model1_path: .pth model path
+  dict_param2 = dict(model2.named_parameters())
+  for name2 in dict_param2:
+    if name2 in dict_param1:
+      # print("tensor '%s' found in both models, so copy it from model 1 to model 2" % name2)
+      dict_param2[name2].data.copy_(dict_param1[name2].data)
+  model2.load_state_dict(dict_param2)
+  return model2
+  
+
 # Original VDSR model
 class VDSR(nn.Module):
   def __init__(self, model=False, fixed=False):
@@ -31,7 +45,8 @@ class VDSR(nn.Module):
     self.relu = nn.ReLU(inplace=True)
     
     if model:
-      self.load_state_dict(torch.load(model, map_location=lambda storage, location: storage))
+      load_param(model, self)
+      # self.load_state_dict(torch.load(model, map_location=lambda storage, location: storage))
     if fixed:
       for param in self.parameters():
           param.requires_grad = False
@@ -85,6 +100,31 @@ class VDSR(nn.Module):
     return out1, out5, out9, out13, out17, y # the last element of return is the residual
           
     
+  def forward_dense(self, y):
+    y = self.relu(self.conv1(y)); out1 = y
+    y = self.relu(self.conv2(y)); out2 = y
+    y = self.relu(self.conv3(y)); out3 = y
+    y = self.relu(self.conv4(y)); out4 = y
+    y = self.relu(self.conv5(y)); out5 = y
+    y = self.relu(self.conv6(y)); out6 = y
+    y = self.relu(self.conv7(y)); out7 = y
+    y = self.relu(self.conv8(y)); out8 = y
+    y = self.relu(self.conv9(y)); out9 = y
+    y = self.relu(self.conv10(y)); out10 = y
+    y = self.relu(self.conv11(y)); out11 = y
+    y = self.relu(self.conv12(y)); out12 = y
+    y = self.relu(self.conv13(y)); out13 = y
+    y = self.relu(self.conv14(y)); out14 = y
+    y = self.relu(self.conv15(y)); out15 = y
+    y = self.relu(self.conv16(y)); out16 = y
+    y = self.relu(self.conv17(y)); out17 = y
+    y = self.relu(self.conv18(y)); out18 = y
+    y = self.relu(self.conv19(y)); out19 = y
+    y = self.conv20(y); out20 = y
+    return out1, out2, out3, out4, out5, out6, out7, out8, out9, out10, \
+           out11, out12, out13, out14, out15, out16, out17, out18, out19, out20
+    
+    
 class SmallVDSR_16x(nn.Module):
   def __init__(self, model=False, fixed=False):
     super(SmallVDSR_16x, self).__init__()
@@ -123,38 +163,62 @@ class SmallVDSR_16x(nn.Module):
     self.conv17_aux = nn.Conv2d(16,64,1,1,0,bias=False)
     self.conv19_aux = nn.Conv2d(16,64,1,1,0,bias=False)
     
-    
     if model:
-      self.load_state_dict(torch.load(model, map_location=lambda storage, location: storage))
+      load_param(model, self)
     if fixed:
       for param in self.parameters():
           param.requires_grad = False
     
   def forward_aux(self, y):
     y = self.relu(self.conv1(y)); out1_aux = self.prelu(self.conv1_aux(y))
-    y = self.relu(self.conv2(y))
-    y = self.relu(self.conv3(y)); # out3_aux = self.prelu(self.conv3_aux(y))
-    y = self.relu(self.conv4(y))
+    y = self.relu(self.conv2(y)); out2_aux = self.prelu(self.conv2_aux(y))
+    y = self.relu(self.conv3(y)); out3_aux = self.prelu(self.conv3_aux(y))
+    y = self.relu(self.conv4(y)); out4_aux = self.prelu(self.conv4_aux(y))
     y = self.relu(self.conv5(y)); out5_aux = self.prelu(self.conv5_aux(y))
-    y = self.relu(self.conv6(y))
-    y = self.relu(self.conv7(y)); # out7_aux = self.prelu(self.conv7_aux(y))
-    y = self.relu(self.conv8(y))
+    y = self.relu(self.conv6(y)); out5_aux = self.prelu(self.conv5_aux(y))
+    y = self.relu(self.conv7(y)); out7_aux = self.prelu(self.conv7_aux(y))
+    y = self.relu(self.conv8(y)); out5_aux = self.prelu(self.conv5_aux(y))
     y = self.relu(self.conv9(y)); out9_aux = self.prelu(self.conv9_aux(y))
-    y = self.relu(self.conv10(y))
-    y = self.relu(self.conv11(y)); # out11_aux = self.prelu(self.conv11_aux(y))
-    y = self.relu(self.conv12(y))
-    y = self.relu(self.conv13(y)); out13_aux = self.prelu(self.conv11_aux(y))
-    y = self.relu(self.conv14(y))
-    y = self.relu(self.conv15(y)); # out15_aux = self.prelu(self.conv15_aux(y))
-    y = self.relu(self.conv16(y))
+    y = self.relu(self.conv10(y)); out10_aux = self.prelu(self.conv10_aux(y))
+    y = self.relu(self.conv11(y)); out11_aux = self.prelu(self.conv11_aux(y))
+    y = self.relu(self.conv12(y)); out12_aux = self.prelu(self.conv12_aux(y))
+    y = self.relu(self.conv13(y)); out13_aux = self.prelu(self.conv13_aux(y))
+    y = self.relu(self.conv14(y)); out14_aux = self.prelu(self.conv14_aux(y))
+    y = self.relu(self.conv15(y)); out15_aux = self.prelu(self.conv15_aux(y))
+    y = self.relu(self.conv16(y)); out16_aux = self.prelu(self.conv16_aux(y))
     y = self.relu(self.conv17(y)); out17_aux = self.prelu(self.conv17_aux(y))
-    y = self.relu(self.conv18(y))
-    y = self.relu(self.conv19(y)); # out19_aux = self.prelu(self.conv19_aux(y))
+    y = self.relu(self.conv18(y)); out18_aux = self.prelu(self.conv18_aux(y))
+    y = self.relu(self.conv19(y)); out19_aux = self.prelu(self.conv19_aux(y))
     y = self.conv20(y)
     # return out1_aux, out3_aux, out5_aux, out7_aux, out9_aux, \
         # out11_aux, out13_aux, out15_aux, out17_aux, out19_aux, y
     return out1_aux, out5_aux, out9_aux, out13_aux, out17_aux, y # the last element of return is the residual
         
+  def forward_dense(self, y):
+    y = self.relu(self.conv1(y)); out1 = y
+    y = self.relu(self.conv2(y)); out2 = y
+    y = self.relu(self.conv3(y)); out3 = y
+    y = self.relu(self.conv4(y)); out4 = y
+    y = self.relu(self.conv5(y)); out5 = y
+    y = self.relu(self.conv6(y)); out6 = y
+    y = self.relu(self.conv7(y)); out7 = y
+    y = self.relu(self.conv8(y)); out8 = y
+    y = self.relu(self.conv9(y)); out9 = y
+    y = self.relu(self.conv10(y)); out10 = y
+    y = self.relu(self.conv11(y)); out11 = y
+    y = self.relu(self.conv12(y)); out12 = y
+    y = self.relu(self.conv13(y)); out13 = y
+    y = self.relu(self.conv14(y)); out14 = y
+    y = self.relu(self.conv15(y)); out15 = y
+    y = self.relu(self.conv16(y)); out16 = y
+    y = self.relu(self.conv17(y)); out17 = y
+    y = self.relu(self.conv18(y)); out18 = y
+    y = self.relu(self.conv19(y)); out19 = y
+    y = self.conv20(y); out20 = y
+    return out1, out2, out3, out4, out5, out6, out7, out8, out9, out10, \
+           out11, out12, out13, out14, out15, out16, out17, out18, out19, out20
+    
+    
     
   def forward(self, y):
     y = self.relu(self.conv1(y))
