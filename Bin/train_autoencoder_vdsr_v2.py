@@ -115,7 +115,8 @@ def get_local_structure(structure_maps, feature_maps):
     # print(fmap.shape)
     for j in range(opt.num_pos):
       h, w = smap[j]
-      out[i, j] = covariance(fmap[:, h:h+2*margin+1, w:w+2*margin+1])
+      covar = covariance(fmap[:, h:h+2*margin+1, w:w+2*margin+1])
+      out[i, j] = covar / covar.max() # normalized to [0, 1]
   return out
   
 
@@ -184,23 +185,23 @@ def train(training_data_loader, optimizer, model, loss_func, epoch):
         
         # ploss_0 = loss_func2(get_local_structure(struct_map_batch, feats_F16[0]), get_local_structure(struct_map_batch, feats_F64[0]).data) * opt.ploss_weight
         # ploss_1 = loss_func2(get_local_structure(struct_map_batch, feats_F16[1]), get_local_structure(struct_map_batch, feats_F64[1]).data) * opt.ploss_weight
-        ploss_2 = loss_func2(get_local_structure(struct_map_batch, feats_F16[2]), get_local_structure(struct_map_batch, feats_F64[2]).data) * 0.5
+        ploss_2 = loss_func2(get_local_structure(struct_map_batch, feats_F16[2]), get_local_structure(struct_map_batch, feats_F64[2]).data) * 5e3
         # ploss_3 = loss_func2(get_local_structure(struct_map_batch, feats_F16[3]), get_local_structure(struct_map_batch, feats_F64[3]).data) * opt.ploss_weight
         # ploss_4 = loss_func2(get_local_structure(struct_map_batch, feats_F16[4]), get_local_structure(struct_map_batch, feats_F64[4]).data) * opt.ploss_weight
         # ploss_5 = loss_func2(get_local_structure(struct_map_batch, feats_F16[5]), get_local_structure(struct_map_batch, feats_F64[5]).data) * opt.ploss_weight
-        ploss_6 = loss_func2(get_local_structure(struct_map_batch, feats_F16[6]), get_local_structure(struct_map_batch, feats_F64[6]).data) * 4
+        ploss_6 = loss_func2(get_local_structure(struct_map_batch, feats_F16[6]), get_local_structure(struct_map_batch, feats_F64[6]).data) * 5e3
         # ploss_7 = loss_func2(get_local_structure(struct_map_batch, feats_F16[7]), get_local_structure(struct_map_batch, feats_F64[7]).data) * opt.ploss_weight
         # ploss_8 = loss_func2(get_local_structure(struct_map_batch, feats_F16[8]), get_local_structure(struct_map_batch, feats_F64[8]).data) * opt.ploss_weight
         # ploss_9 = loss_func2(get_local_structure(struct_map_batch, feats_F16[9]), get_local_structure(struct_map_batch, feats_F64[9]).data) * opt.ploss_weight
-        ploss_10 = loss_func2(get_local_structure(struct_map_batch, feats_F16[10]), get_local_structure(struct_map_batch, feats_F64[10]).data) * 5*1e3
+        ploss_10 = loss_func2(get_local_structure(struct_map_batch, feats_F16[10]), get_local_structure(struct_map_batch, feats_F64[10]).data) * 5e3
         # ploss_11 = loss_func2(get_local_structure(struct_map_batch, feats_F16[11]), get_local_structure(struct_map_batch, feats_F64[11]).data) * opt.ploss_weight
         # ploss_12 = loss_func2(get_local_structure(struct_map_batch, feats_F16[12]), get_local_structure(struct_map_batch, feats_F64[12]).data) * opt.ploss_weight
         # ploss_13 = loss_func2(get_local_structure(struct_map_batch, feats_F16[13]), get_local_structure(struct_map_batch, feats_F64[13]).data) * opt.ploss_weight
-        ploss_14 = loss_func2(get_local_structure(struct_map_batch, feats_F16[14]), get_local_structure(struct_map_batch, feats_F64[14]).data) * 2*1e6
+        ploss_14 = loss_func2(get_local_structure(struct_map_batch, feats_F16[14]), get_local_structure(struct_map_batch, feats_F64[14]).data) * 5e3
         # ploss_15 = loss_func2(get_local_structure(struct_map_batch, feats_F16[15]), get_local_structure(struct_map_batch, feats_F64[15]).data) * opt.ploss_weight
         # ploss_16 = loss_func2(get_local_structure(struct_map_batch, feats_F16[16]), get_local_structure(struct_map_batch, feats_F64[16]).data) * opt.ploss_weight
         # ploss_17 = loss_func2(get_local_structure(struct_map_batch, feats_F16[17]), get_local_structure(struct_map_batch, feats_F64[17]).data) * opt.ploss_weight
-        ploss_18 = loss_func2(get_local_structure(struct_map_batch, feats_F16[18]), get_local_structure(struct_map_batch, feats_F64[18]).data) * 5*1e8
+        ploss_18 = loss_func2(get_local_structure(struct_map_batch, feats_F16[18]), get_local_structure(struct_map_batch, feats_F64[18]).data) * 5e3
         # print("get ploss: {:.3f}".format(time.time() - t0))
         iloss = loss_func(feats_F16[-1]+input, target.data) * opt.iloss_weight
         # loss = iloss + ploss_0 + ploss_1 + ploss_2 + ploss_3 + ploss_4 + ploss_5 + ploss_6 + ploss_7 + ploss_8 + ploss_9 \
@@ -268,7 +269,7 @@ if __name__ == "__main__":
   TIME_ID = os.environ["SERVER"] + time.strftime("-%Y%m%d-%H%M")
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
   opt.log = sys.stdout if opt.debug else open(log_path, "w+")
-  logprint("===> use gpu id: {}".format(opt.gpu))
+  logprint("===> Use gpu id: {}".format(opt.gpu))
 
   # Set up model
   model = Autoencoders[opt.mode](opt.e1, opt.e2)
