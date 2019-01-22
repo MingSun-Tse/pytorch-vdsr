@@ -29,6 +29,36 @@ from torch.autograd import Variable
 from model_vdsr import Autoencoders
 from dataset import DatasetFromHdf5 # vdsr data loader
 
+
+# Passed-in params
+parser = argparse.ArgumentParser(description="VDSR Compression")
+parser.add_argument('--train_data', type=str, help='the directory of train images', default="../Data/train_data/train.h5")
+parser.add_argument('--test_data', type=str, help='the directory of test images', default="../Data/test_data/Set5_mat")
+parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default="model/64filter_192-20181019-0832_E50.pth")
+parser.add_argument('--e2', type=str, help='path of pretrained encoder2', default=None)
+parser.add_argument('--gpu', type=str, help="which gpu to run on. default is 0", default="0")
+parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=128)
+parser.add_argument('--lr', type=float, help='learning rate', default=0.1)
+parser.add_argument('--ploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
+parser.add_argument('--iloss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
+parser.add_argument('--layer_ploss_weight', type=str, default="1-0.01-0.1-1-100") # It will be parsed by sep "-".
+parser.add_argument('-p', '--project', type=str, default="test", help='the name of project, to save logs etc., will be set in the directory "Experiments"')
+parser.add_argument('-m', '--mode', type=str, help='the training mode name.')
+parser.add_argument('--epoch', type=int, default=50)
+parser.add_argument("--step", type=int, default=10, help="Sets the learning rate to the initial LR decayed by momentum every n epochs, Default: n=10")
+parser.add_argument("--clip", type=float, default=0.4, help="Clipping Gradients. Default=0.4")
+parser.add_argument("--momentum", default=0.9, type=float, help="Momentum, Default: 0.9")
+parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="Weight decay, Default: 1e-4")
+parser.add_argument('--resume', action="store_true")
+parser.add_argument("--num_filter", default=64, type=int)
+parser.add_argument("--debug", action="store_true")
+parser.add_argument("--num_pos", type=int, default=64)
+parser.add_argument("--pic", type=str)
+parser.add_argument("--patch_size", type=int, default=5)
+parser.add_argument("--pixel_threshold", type=float, default=50./255)
+opt = parser.parse_args()
+
+
 def logprint(some_str, f=sys.stdout):
   print(time.strftime("[%s" % os.getpid() + "-%Y/%m/%d-%H:%M] ") + str(some_str), file=f, flush=True)
 
@@ -47,14 +77,17 @@ def covariance(x): # batch x channel x height x width
   print(x.shape)
   return x
   
-def get_structure_map(residuals):
-  structure_map = []
+def get_structure_map(residuals, THRESHOLD=opt.pixel_threshold):
+  assert(len(residuals.shape) == 3) # [batch, height, width], because of only using Y channel, there is no dimension for channel.
+  structure_maps = []
   for res in residuals:
-    x, y = np.where(res > 10.0/255)
-    structure_map.append(zip(x, y))
-  return structure_map
+    h, w = np.where(np.abs(res) > THRESHOLD)
+    structure_maps.append(list(zip(h, w)))
+    res[np.abs(res) <= THRESHOLD] = 0
+  return np.array(structure_maps), residuals
   
-def local_structure(structure_map, residuals, feature_maps, filter_size=5):
+  
+def local_structure(structure_map, residuals, feature_maps, patch_size=opt.patch_size):
   """
   """
   structure_maps = get_structure_map(residuals)
@@ -62,17 +95,17 @@ def local_structure(structure_map, residuals, feature_maps, filter_size=5):
   out = []
   for index in range(batch): # feature_maps are in batch
     smap = structure_maps[index]
-    convar = []
+    covar = []
     for (x, y) in smap:
-      fm = feature_maps[index][:, x-filter_size : x+filter_size, y-filter_size : y+filter_size]
-      convar.append(covariance(fm))
-    out.append(convar)
+      fm = feature_maps[index][:, x-patch_size : x+patch_size, y-patch_size : y+patch_size]
+      covar.append(covariance(fm))
+    out.append(covar)
   return out
   
 
-def test(model, args, log, epoch):
+def test(model, log, epoch):
   scales = [2, 3, 4]
-  image_list = glob.glob(args.test_data + "/*.*")
+  image_list = glob.glob(opt.test_data + "/*.*")
   for scale in scales:
     avg_psnr_predicted = 0.0
     avg_psnr_bicubic = 0.0
@@ -107,13 +140,13 @@ def test(model, args, log, epoch):
 
     logprint("Epoch {} Scale {} PSNR_predicted = {:.4f} PSNR_bicubic = {:.4f}".format(epoch, scale, avg_psnr_predicted/count, avg_psnr_bicubic/count), log)
    
-def adjust_learning_rate(epoch, args):
+def adjust_learning_rate(epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 10 epochs"""
-    lr = args.lr * (0.1 ** (epoch // args.step))
+    lr = opt.lr * (0.1 ** (epoch // opt.step))
     return lr
 
-def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
-    lr = adjust_learning_rate(epoch, args)
+def train(training_data_loader, optimizer, model, loss_func, epoch, log):
+    lr = adjust_learning_rate(epoch)
   
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
@@ -122,7 +155,7 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
     
     model.train()
     ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
-    layer_ploss_weight = [float(x) for x in args.layer_ploss_weight.split("-")]
+    layer_ploss_weight = [float(x) for x in opt.layer_ploss_weight.split("-")]
     for step, batch in enumerate(training_data_loader, 1):
         input, target = Variable(batch[0]), Variable(batch[1], requires_grad=False)
         input = input.cuda()
@@ -134,28 +167,28 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         feats_2, feats2_2, predictedHR_2, predictedHR2_2, \
         feats_3, feats2_3, predictedHR_3, predictedHR2_3 = model(input)
         
-        ploss1_1 = loss_func(feats2_1[0], feats_1[0].data) * args.ploss_weight * layer_ploss_weight[0]
-        ploss2_1 = loss_func(feats2_1[1], feats_1[1].data) * args.ploss_weight * layer_ploss_weight[1]
-        ploss3_1 = loss_func(feats2_1[2], feats_1[2].data) * args.ploss_weight * layer_ploss_weight[2]
-        ploss4_1 = loss_func(feats2_1[3], feats_1[3].data) * args.ploss_weight * layer_ploss_weight[3]
-        ploss5_1 = loss_func(feats2_1[4], feats_1[4].data) * args.ploss_weight * layer_ploss_weight[4]
+        ploss1_1 = loss_func(feats2_1[0], feats_1[0].data) * opt.ploss_weight * layer_ploss_weight[0]
+        ploss2_1 = loss_func(feats2_1[1], feats_1[1].data) * opt.ploss_weight * layer_ploss_weight[1]
+        ploss3_1 = loss_func(feats2_1[2], feats_1[2].data) * opt.ploss_weight * layer_ploss_weight[2]
+        ploss4_1 = loss_func(feats2_1[3], feats_1[3].data) * opt.ploss_weight * layer_ploss_weight[3]
+        ploss5_1 = loss_func(feats2_1[4], feats_1[4].data) * opt.ploss_weight * layer_ploss_weight[4]
         
-        ploss1_2 = loss_func(feats2_2[0], feats_2[0].data) * args.ploss_weight * layer_ploss_weight[0]
-        ploss2_2 = loss_func(feats2_2[1], feats_2[1].data) * args.ploss_weight * layer_ploss_weight[1]
-        ploss3_2 = loss_func(feats2_2[2], feats_2[2].data) * args.ploss_weight * layer_ploss_weight[2]
-        ploss4_2 = loss_func(feats2_2[3], feats_2[3].data) * args.ploss_weight * layer_ploss_weight[3]
-        ploss5_2 = loss_func(feats2_2[4], feats_2[4].data) * args.ploss_weight * layer_ploss_weight[4]
+        ploss1_2 = loss_func(feats2_2[0], feats_2[0].data) * opt.ploss_weight * layer_ploss_weight[0]
+        ploss2_2 = loss_func(feats2_2[1], feats_2[1].data) * opt.ploss_weight * layer_ploss_weight[1]
+        ploss3_2 = loss_func(feats2_2[2], feats_2[2].data) * opt.ploss_weight * layer_ploss_weight[2]
+        ploss4_2 = loss_func(feats2_2[3], feats_2[3].data) * opt.ploss_weight * layer_ploss_weight[3]
+        ploss5_2 = loss_func(feats2_2[4], feats_2[4].data) * opt.ploss_weight * layer_ploss_weight[4]
         
-        ploss1_3 = loss_func(feats2_3[0], feats_3[0].data) * args.ploss_weight * layer_ploss_weight[0]
-        ploss2_3 = loss_func(feats2_3[1], feats_3[1].data) * args.ploss_weight * layer_ploss_weight[1]
-        ploss3_3 = loss_func(feats2_3[2], feats_3[2].data) * args.ploss_weight * layer_ploss_weight[2]
-        ploss4_3 = loss_func(feats2_3[3], feats_3[3].data) * args.ploss_weight * layer_ploss_weight[3]
-        ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * args.ploss_weight * layer_ploss_weight[4]
+        ploss1_3 = loss_func(feats2_3[0], feats_3[0].data) * opt.ploss_weight * layer_ploss_weight[0]
+        ploss2_3 = loss_func(feats2_3[1], feats_3[1].data) * opt.ploss_weight * layer_ploss_weight[1]
+        ploss3_3 = loss_func(feats2_3[2], feats_3[2].data) * opt.ploss_weight * layer_ploss_weight[2]
+        ploss4_3 = loss_func(feats2_3[3], feats_3[3].data) * opt.ploss_weight * layer_ploss_weight[3]
+        ploss5_3 = loss_func(feats2_3[4], feats_3[4].data) * opt.ploss_weight * layer_ploss_weight[4]
         
-        HR_iloss_1 = loss_func(predictedHR2_1, target.data) * args.iloss_weight
-        HR_iloss_2 = loss_func(predictedHR2_2, target.data) * args.iloss_weight
-        HR_iloss_3 = loss_func(predictedHR2_3, target.data) * args.iloss_weight
-        GT_iloss   = loss_func(predictedHR2_1, target.data) * args.iloss_weight
+        HR_iloss_1 = loss_func(predictedHR2_1, target.data) * opt.iloss_weight
+        HR_iloss_2 = loss_func(predictedHR2_2, target.data) * opt.iloss_weight
+        HR_iloss_3 = loss_func(predictedHR2_3, target.data) * opt.iloss_weight
+        GT_iloss   = loss_func(predictedHR2_1, target.data) * opt.iloss_weight
         
         # loss = ploss1_3 + ploss2_3 + ploss3_3 + ploss4_3 + ploss5_3
         loss = ploss1_1 + ploss2_1 + ploss3_1 + ploss4_1 + ploss5_1 + \
@@ -166,7 +199,7 @@ def train(training_data_loader, optimizer, model, loss_func, epoch, args, log):
         
         optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm(model.parameters(), args.clip) 
+        nn.utils.clip_grad_norm(model.parameters(), opt.clip) 
         optimizer.step()
 
         if step % SHOW_INTERVAL == 0:
@@ -187,52 +220,28 @@ ploss2=({:.3f} {:.3f} {:.3f}) | ploss3=({:.3f} {:.3f} {:.3f}) | ploss4=({:.3f} {
               (time.time()-t1)/SHOW_INTERVAL), log)
           t1 = time.time()
 
-def save_checkpoint(ae, epoch, TIME_ID, weights_path, args):
+def save_checkpoint(ae, epoch, TIME_ID, weights_path):
   model_index = 0
   for model in [ae.e1, ae.e2]:
     model_index += 1
     if not model.fixed:
-      torch.save(model.state_dict(), pjoin(weights_path, "%s_%s_E%s.pth" % (TIME_ID, args.mode, epoch)))
+      torch.save(model.state_dict(), pjoin(weights_path, "%s_%s_E%s.pth" % (TIME_ID, opt.mode, epoch)))
 
 SHOW_INTERVAL = 100
 SAVE_INTERVAL = 1000
 t1 = 0
 if __name__ == "__main__":
-  # Passed-in params
-  parser = argparse.ArgumentParser(description="VDSR Compression")
-  parser.add_argument('--train_data', type=str, help='the directory of train images', default="../Data/train_data/train.h5")
-  parser.add_argument('--test_data', type=str, help='the directory of test images', default="../Data/test_data/Set5_mat")
-  parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default="model/64filter_192-20181019-0832_E50.pth")
-  parser.add_argument('--e2', type=str, help='path of pretrained encoder2', default=None)
-  parser.add_argument('--gpu', type=str, help="which gpu to run on. default is 0", default="0")
-  parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=128)
-  parser.add_argument('--lr', type=float, help='learning rate', default=0.1)
-  parser.add_argument('--ploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
-  parser.add_argument('--iloss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
-  parser.add_argument('--layer_ploss_weight', type=str, default="1-0.01-0.1-1-100") # It will be parsed by sep "-".
-  parser.add_argument('-p', '--project', type=str, default="test", help='the name of project, to save logs etc., will be set in the directory "Experiments"')
-  parser.add_argument('-m', '--mode', type=str, help='the training mode name.')
-  parser.add_argument('--epoch', type=int, default=50)
-  parser.add_argument("--step", type=int, default=10, help="Sets the learning rate to the initial LR decayed by momentum every n epochs, Default: n=10")
-  parser.add_argument("--clip", type=float, default=0.4, help="Clipping Gradients. Default=0.4")
-  parser.add_argument("--momentum", default=0.9, type=float, help="Momentum, Default: 0.9")
-  parser.add_argument("--weight-decay", "--wd", default=1e-4, type=float, help="Weight decay, Default: 1e-4")
-  parser.add_argument('--resume', action="store_true")
-  parser.add_argument("--num_filter", default=64, type=int)
-  parser.add_argument("--debug", action="store_true")
-  args = parser.parse_args()
-
   # Set up data
-  train_set = DatasetFromHdf5(args.train_data)
-  training_data_loader = DataLoader(dataset=train_set, num_workers=1, batch_size=args.batch_size, shuffle=True) # 'num_workers' need to be 1, otherwise will cause read error.
+  train_set = DatasetFromHdf5(opt.train_data)
+  training_data_loader = DataLoader(dataset=train_set, num_workers=1, batch_size=opt.batch_size, shuffle=True) # 'num_workers' need to be 1, otherwise will cause read error.
   
   # Set up directories and logs etc
-  if args.debug:
-    args.project = "test" # debug means it's just a test demo
-  project_path = pjoin("../Experiments", args.project)
+  if opt.debug:
+    opt.project = "test" # debug means it's just a test demo
+  project_path = pjoin("../Experiments", opt.project)
   rec_img_path = pjoin(project_path, "reconstructed_images")
   weights_path = pjoin(project_path, "weights") # to save torch model
-  if not args.resume:
+  if not opt.resume:
     if os.path.exists(project_path):
       respond = "Y" # input("The appointed project name has existed. Do you want to overwrite it (everything inside will be removed)? (y/n) ")
       if str.upper(respond) in ["Y", "YES"]:
@@ -245,35 +254,35 @@ if __name__ == "__main__":
       os.makedirs(weights_path)
   TIME_ID = os.environ["SERVER"] + time.strftime("-%Y%m%d-%H%M")
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
-  log = sys.stdout if args.debug else open(log_path, "w+")
-  logprint("===> use gpu id: {}".format(args.gpu), log)
+  log = sys.stdout if opt.debug else open(log_path, "w+")
+  logprint("===> use gpu id: {}".format(opt.gpu), log)
 
   # Set up model
-  model = Autoencoders[args.mode](args.e1, args.e2)
+  model = Autoencoders[opt.mode](opt.e1, opt.e2)
   model.cuda()
 
   # print setting for later check
-  logprint(str(args._get_kwargs()), log)
+  logprint(str(opt._get_kwargs()), log)
   
   # get previous step
   previous_epoch = 0
   previous_step = 0
   previous_total_step = 0
-  if args.e2 and args.resume:
-    previous_epoch = int(os.path.basename(args.e2).split("_")[-1].split("E")[1].split("S")[0]) # the name of model must end with "_ExxSxx.xx"
-    previous_step = int(os.path.basename(args.e2).split("_")[-1].split("S")[1].split(".")[0])
+  if opt.e2 and opt.resume:
+    previous_epoch = int(os.path.basename(opt.e2).split("_")[-1].split("E")[1].split("S")[0]) # the name of model must end with "_ExxSxx.xx"
+    previous_step = int(os.path.basename(opt.e2).split("_")[-1].split("S")[1].split(".")[0])
     previous_total_step = previous_epoch * num_step_per_epoch + previous_step
 
   # Optimize
-  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+  optimizer = optim.SGD(model.parameters(), lr=opt.lr, momentum=opt.momentum, weight_decay=opt.weight_decay)
   loss_func = nn.MSELoss(reduction="sum") # old: nn.MSELoss(size_average=False)
   t1 = time.time()
   loss_log = []
-  num_stage = int(args.mode[0])
+  num_stage = int(opt.mode[0])
   ploss1 = ploss2 = ploss3 = ploss4 = ploss5 = torch.FloatTensor(0).cuda()
-  test(model, args, log, -1) # initial test
-  for epoch in range(args.epoch):
-    train(training_data_loader, optimizer, model, loss_func, epoch, args, log)
-    save_checkpoint(model, epoch, TIME_ID, weights_path, args)
-    test(model, args, log, epoch)
+  test(model, log, -1) # initial test
+  for epoch in range(opt.epoch):
+    train(training_data_loader, optimizer, model, loss_func, epoch, log)
+    save_checkpoint(model, epoch, TIME_ID, weights_path)
+    test(model, log, epoch)
     
