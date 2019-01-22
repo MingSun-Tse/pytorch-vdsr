@@ -101,23 +101,27 @@ def get_structure_map(residuals, THRESHOLD=opt.pixel_threshold, num_pos=opt.num_
   return np.array(picked_positions) # [batch, num_pos, 2]
   
   
-def get_local_structure(structure_maps, feature_maps):
+def get_local_structure_loss(structure_maps, fms1, fms2, loss_func):
   """
     structure_maps -- shape: [batch, num_pos, 2], ndarray
     feature_maps   -- shape: [batch, channel, height, width], Tensor
     out            -- shape: [batch, num_pos, patch_size*patch_size, patch_size*patch_size)
   """
   margin = int((opt.patch_size - 1) / 2)
-  out = torch.zeros([opt.batch_size, opt.num_pos, opt.patch_size*opt.patch_size, opt.patch_size*opt.patch_size]).cuda()
+  out1 = torch.zeros([opt.batch_size, opt.num_pos, opt.patch_size*opt.patch_size, opt.patch_size*opt.patch_size]).cuda()
+  out2 = torch.zeros([opt.batch_size, opt.num_pos, opt.patch_size*opt.patch_size, opt.patch_size*opt.patch_size]).cuda()
   for i in range(opt.batch_size):
-    smap, fmap = structure_maps[i], feature_maps[i]
-    fmap = nn.functional.pad(fmap, pad=(margin, margin, margin, margin)) # padding zero
-    # print(fmap.shape)
+    smap, fm1, fm2 = structure_maps[i], fms1[i], fms2[i]
+    fm1 = nn.functional.pad(fm1, pad=(margin, margin, margin, margin)) # padding zero
+    fm2 = nn.functional.pad(fm2, pad=(margin, margin, margin, margin)) # padding zero
     for j in range(opt.num_pos):
       h, w = smap[j]
-      covar = covariance(fmap[:, h:h+2*margin+1, w:w+2*margin+1])
-      out[i, j] = covar / covar.max() # normalized to [0, 1]
-  return out
+      out1[i, j] = covariance(fm1[:, h:h+2*margin+1, w:w+2*margin+1])
+      out2[i, j] = covariance(fm2[:, h:h+2*margin+1, w:w+2*margin+1])
+  out1 = nn.functional.normalize(out1)
+  out2 = nn.functional.normalize(out2)
+  loss = loss_func(out1, out2.data)
+  return loss
   
 
 def test(model, epoch):
@@ -183,29 +187,12 @@ def train(training_data_loader, optimizer, model, loss_func, epoch):
         struct_map_batch = get_structure_map(residual_batch)
         # print("get positions: {:.3f}".format(time.time() - t0))
         
-        # ploss_0 = loss_func2(get_local_structure(struct_map_batch, feats_F16[0]), get_local_structure(struct_map_batch, feats_F64[0]).data) * opt.ploss_weight
-        # ploss_1 = loss_func2(get_local_structure(struct_map_batch, feats_F16[1]), get_local_structure(struct_map_batch, feats_F64[1]).data) * opt.ploss_weight
-        ploss_2 = loss_func2(get_local_structure(struct_map_batch, feats_F16[2]), get_local_structure(struct_map_batch, feats_F64[2]).data) * 5e3
-        # ploss_3 = loss_func2(get_local_structure(struct_map_batch, feats_F16[3]), get_local_structure(struct_map_batch, feats_F64[3]).data) * opt.ploss_weight
-        # ploss_4 = loss_func2(get_local_structure(struct_map_batch, feats_F16[4]), get_local_structure(struct_map_batch, feats_F64[4]).data) * opt.ploss_weight
-        # ploss_5 = loss_func2(get_local_structure(struct_map_batch, feats_F16[5]), get_local_structure(struct_map_batch, feats_F64[5]).data) * opt.ploss_weight
-        ploss_6 = loss_func2(get_local_structure(struct_map_batch, feats_F16[6]), get_local_structure(struct_map_batch, feats_F64[6]).data) * 5e3
-        # ploss_7 = loss_func2(get_local_structure(struct_map_batch, feats_F16[7]), get_local_structure(struct_map_batch, feats_F64[7]).data) * opt.ploss_weight
-        # ploss_8 = loss_func2(get_local_structure(struct_map_batch, feats_F16[8]), get_local_structure(struct_map_batch, feats_F64[8]).data) * opt.ploss_weight
-        # ploss_9 = loss_func2(get_local_structure(struct_map_batch, feats_F16[9]), get_local_structure(struct_map_batch, feats_F64[9]).data) * opt.ploss_weight
-        ploss_10 = loss_func2(get_local_structure(struct_map_batch, feats_F16[10]), get_local_structure(struct_map_batch, feats_F64[10]).data) * 5e3
-        # ploss_11 = loss_func2(get_local_structure(struct_map_batch, feats_F16[11]), get_local_structure(struct_map_batch, feats_F64[11]).data) * opt.ploss_weight
-        # ploss_12 = loss_func2(get_local_structure(struct_map_batch, feats_F16[12]), get_local_structure(struct_map_batch, feats_F64[12]).data) * opt.ploss_weight
-        # ploss_13 = loss_func2(get_local_structure(struct_map_batch, feats_F16[13]), get_local_structure(struct_map_batch, feats_F64[13]).data) * opt.ploss_weight
-        ploss_14 = loss_func2(get_local_structure(struct_map_batch, feats_F16[14]), get_local_structure(struct_map_batch, feats_F64[14]).data) * 5e3
-        # ploss_15 = loss_func2(get_local_structure(struct_map_batch, feats_F16[15]), get_local_structure(struct_map_batch, feats_F64[15]).data) * opt.ploss_weight
-        # ploss_16 = loss_func2(get_local_structure(struct_map_batch, feats_F16[16]), get_local_structure(struct_map_batch, feats_F64[16]).data) * opt.ploss_weight
-        # ploss_17 = loss_func2(get_local_structure(struct_map_batch, feats_F16[17]), get_local_structure(struct_map_batch, feats_F64[17]).data) * opt.ploss_weight
-        ploss_18 = loss_func2(get_local_structure(struct_map_batch, feats_F16[18]), get_local_structure(struct_map_batch, feats_F64[18]).data) * 5e3
-        # print("get ploss: {:.3f}".format(time.time() - t0))
+        ploss_2  = get_local_structure_loss(struct_map_batch, feats_F16[2],  feats_F64[2],  loss_func2) * 5e4
+        ploss_6  = get_local_structure_loss(struct_map_batch, feats_F16[6],  feats_F64[6],  loss_func2) * 5e4
+        ploss_10 = get_local_structure_loss(struct_map_batch, feats_F16[10], feats_F64[10], loss_func2) * 5e4
+        ploss_14 = get_local_structure_loss(struct_map_batch, feats_F16[14], feats_F64[14], loss_func2) * 5e4
+        ploss_18 = get_local_structure_loss(struct_map_batch, feats_F16[18], feats_F64[18], loss_func2) * 5e4
         iloss = loss_func(feats_F16[-1]+input, target.data) * opt.iloss_weight
-        # loss = iloss + ploss_0 + ploss_1 + ploss_2 + ploss_3 + ploss_4 + ploss_5 + ploss_6 + ploss_7 + ploss_8 + ploss_9 \
-        #       + ploss_10 + ploss_11 + ploss_12 + ploss_13 + ploss_14 + ploss_15 + ploss_16 + ploss_17 + ploss_18
         loss = ploss_2 + ploss_6 + ploss_10 + ploss_14 + ploss_18 + iloss
         # -----------------------------------------------------
         
