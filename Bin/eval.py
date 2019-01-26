@@ -4,11 +4,11 @@ from torch.autograd import Variable
 import numpy as np
 import time, math, glob
 import scipy.io as sio
-from model_vdsr import SmallVDSR_16x, VDSR
+from model_vdsr_v2 import SmallVDSR_16x, VDSR, SmallVDSR_F8
 
 parser = argparse.ArgumentParser(description="PyTorch VDSR Eval")
 parser.add_argument("--cuda", action="store_true", help="use cuda?")
-parser.add_argument("--model", default="model/model_epoch_50.pth", type=str, help="model path")
+parser.add_argument("-m", "--model", default="model/model_epoch_50.pth", type=str, help="model path")
 parser.add_argument("--dataset", default="../Data/test_data/Set5", type=str, help="dataset name, Default: Set5")
 parser.add_argument("--gpus", default=0, type=int, help="gpu ids (default: 0)")
 parser.add_argument("--mode", default="")
@@ -34,8 +34,12 @@ cuda = opt.cuda
             # raise Exception("No GPU found or Wrong gpu id, please run without --cuda")
 if opt.mode:
   assert(opt.model != "")
-  model = SmallVDSR_16x(opt.model)
-  # model = VDSR(opt.model) # test big model construted by mingsun-tse
+  if "16x" in opt.mode:
+    model = SmallVDSR_16x(opt.model)
+  elif "F8" in opt.mode:
+    model = SmallVDSR_F8(opt.model)
+  elif "original":
+    model = VDSR(opt.model)
 else:
   model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 

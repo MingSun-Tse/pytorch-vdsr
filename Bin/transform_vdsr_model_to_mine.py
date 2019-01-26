@@ -1,13 +1,18 @@
 import torch
 import torch.nn as nn
 import vdsr
-from model_vdsr import VDSR, SmallVDSR_16x
+from model_vdsr_v2 import VDSR, SmallVDSR_16x, SmallVDSR_F8
 import sys
 
+"""
+  Usage: python this_file  <original_vdsr_model>
+"""
 original_vdsr_model = sys.argv[1]
 vdsr_params = list(torch.load(original_vdsr_model)["model"].named_parameters())
 
-encoder = VDSR() # Change this to your demand
+#--------------------------------
+encoder = SmallVDSR_F8() ### Change this to your demand!!!
+#--------------------------------
 params = encoder.named_parameters()
 dict_params = dict(params)
 for i in range(len(vdsr_params)):

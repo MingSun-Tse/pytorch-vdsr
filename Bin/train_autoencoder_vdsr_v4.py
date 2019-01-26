@@ -42,7 +42,7 @@ parser.add_argument('--test_data', type=str, help='the directory of test images'
 parser.add_argument('--e1', type=str, help='path of pretrained encoder1', default="model/64filter_192-20181019-0832_E50.pth")
 parser.add_argument('--e2', type=str, help='path of pretrained encoder2', default=None)
 parser.add_argument('--gpu', type=str, help="which gpu to run on. default is 0", default="0")
-parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=128)
+parser.add_argument('-b', '--batch_size', type=int, help='batch size', default=4)
 parser.add_argument('--lr', type=float, help='learning rate', default=0.1)
 parser.add_argument('--ploss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
 parser.add_argument('--iloss_weight', type=float, help='loss weight to balance multi-losses', default=1.0)
@@ -58,10 +58,10 @@ parser.add_argument('--resume', action="store_true")
 parser.add_argument("--num_filter", default=64, type=int)
 parser.add_argument("--debug", action="store_true")
 parser.add_argument("--num_pos", type=int, default=8)
-parser.add_argument("--pic", type=str)
 parser.add_argument("--patch_size", type=int, default=7)
 parser.add_argument("--pixel_threshold", type=float, default=5./255)
 parser.add_argument("--log")
+parser.add_argument("--TIME_ID")
 opt = parser.parse_args()
 
 
@@ -192,36 +192,53 @@ def train(training_data_loader, optimizer, model, loss_func, epoch):
         struct_map_batch = get_structure_map(residual_batch)
         # print("get positions: {:.3f}".format(time.time() - t0))
         
-        ploss_2  = get_local_structure_loss(struct_map_batch, feats_F16[2],  feats_F64[2],  loss_func2) * 0.5
-        ploss_6  = get_local_structure_loss(struct_map_batch, feats_F16[6],  feats_F64[6],  loss_func2) * 5
-        ploss_10 = get_local_structure_loss(struct_map_batch, feats_F16[10], feats_F64[10], loss_func2) * 5e3
-        ploss_14 = get_local_structure_loss(struct_map_batch, feats_F16[14], feats_F64[14], loss_func2) * 5e6
-        ploss_18 = get_local_structure_loss(struct_map_batch, feats_F16[18], feats_F64[18], loss_func2) * 5e8
-        # print("get ploss: {:.3f}".format(time.time() - t0))
+        #ploss_2  = get_local_structure_loss(struct_map_batch, feats_F16[2],  feats_F64[2],  loss_func2) * 5#0.5
+        #ploss_6  = get_local_structure_loss(struct_map_batch, feats_F16[6],  feats_F64[6],  loss_func2) * 5
+        k = min((4 + 4./len(training_data_loader) * step), 10) * 1e6
+        ploss_16 = get_local_structure_loss(struct_map_batch, feats_F16[16], feats_F64[16], loss_func2) * k
+        ploss_17 = get_local_structure_loss(struct_map_batch, feats_F16[17], feats_F64[17], loss_func2) * k
+        ploss_18 = get_local_structure_loss(struct_map_batch, feats_F16[18], feats_F64[18], loss_func2) * k
+        ploss_19 = get_local_structure_loss(struct_map_batch, feats_F16[19], feats_F64[19], loss_func2) * k
         iloss = loss_func(feats_F16[-1]+input, target.data) * opt.iloss_weight
-        loss  = ploss_2 + ploss_6 + ploss_10 + ploss_14 + ploss_18 + iloss
+        loss  = iloss + ploss_19 + ploss_18 + ploss_17 + ploss_16
         # -----------------------------------------------------
         
         optimizer.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm(model.parameters(), opt.clip) 
+        ave_grad = []
+        for p in model.named_parameters(): # get the params in each layer
+          layer_name = p[0].split(".weight")[0]
+          if p[1].grad is not None: ave_grad.append(np.average(p[1].grad.abs()))
+        total_norm = nn.utils.clip_grad_norm_(model.parameters(), opt.clip)
+        ave_grad = ["{:.2f}   ".format(x) for x in ave_grad]; ave_grad = "".join(ave_grad)
+        print("\n=> E{}S{} bef clip grad: {}  total_norm = {:.2f}".format(epoch, step, ave_grad, total_norm))
+        ave_grad = []
+        for p in model.named_parameters(): # get the params in each layer
+          layer_name = p[0].split(".weight")[0]
+          if p[1].grad is not None: ave_grad.append(np.average(p[1].grad.abs()))
+        ave_grad = ["{:.4f} ".format(x) for x in ave_grad]; ave_grad = "".join(ave_grad)
+        print("=> E{}S{} aft clip grad: {}\n".format(epoch, step, ave_grad))
+        
         optimizer.step()
         # print("backward: {:.3f}".format(time.time() - t0))
         if step % SHOW_INTERVAL == 0:
           global t1          
           format_str = "E{}S{} loss: {:.1f} | iloss: {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f} {:.3f} ({:.1f}s/step)"
           logprint(format_str.format(epoch, step, loss.data.cpu().numpy(), iloss.data.cpu().numpy(), \
-            ploss_2, ploss_6, ploss_10, ploss_14, ploss_18, (time.time()-t1)/SHOW_INTERVAL))          
+            ploss_16, ploss_16, ploss_17, ploss_18, ploss_19, (time.time()-t1)/SHOW_INTERVAL))          
           t1 = time.time()
         if step % 100 == 0:
           test(model, epoch, step)
+          project_path = pjoin("../Experiments", opt.project)
+          weights_path = pjoin(project_path, "weights") # to save torch model
+          save_checkpoint(model, epoch, step, opt.TIME_ID, weights_path)
 
-def save_checkpoint(ae, epoch, TIME_ID, weights_path):
+def save_checkpoint(ae, epoch, step, TIME_ID, weights_path):
   model_index = 0
   for model in [ae.e1, ae.e2]:
     model_index += 1
     if not model.fixed:
-      torch.save(model.state_dict(), pjoin(weights_path, "%s_%s_E%s.pth" % (TIME_ID, opt.mode, epoch)))
+      torch.save(model.state_dict(), pjoin(weights_path, "%s_%s_E%sS%s.pth" % (TIME_ID, opt.mode, epoch, step)))
 
 SHOW_INTERVAL = 2
 t1 = 0
@@ -234,7 +251,6 @@ if __name__ == "__main__":
   if opt.debug:
     opt.project = "test" # debug means it's just a test demo
   project_path = pjoin("../Experiments", opt.project)
-  rec_img_path = pjoin(project_path, "reconstructed_images")
   weights_path = pjoin(project_path, "weights") # to save torch model
   if not opt.resume:
     if os.path.exists(project_path):
@@ -243,14 +259,13 @@ if __name__ == "__main__":
         shutil.rmtree(project_path)
       else:
         exit(1)
-    if not os.path.exists(rec_img_path):
-      os.makedirs(rec_img_path)
     if not os.path.exists(weights_path):
       os.makedirs(weights_path)
   TIME_ID = os.environ["SERVER"] + time.strftime("-%Y%m%d-%H%M")
   log_path = pjoin(weights_path, "log_" + TIME_ID + ".txt")
   opt.log = sys.stdout if opt.debug else open(log_path, "w+")
-  logprint("===> Use gpu id: {}".format(opt.gpu))
+  opt.TIME_ID = TIME_ID
+  logprint("===> Using GPU ID: {}".format(opt.gpu))
 
   # Set up model
   model = Autoencoders[opt.mode](opt.e1, opt.e2)
@@ -275,6 +290,6 @@ if __name__ == "__main__":
   test(model) # initial test
   for epoch in range(opt.epoch):
     train(training_data_loader, optimizer, model, loss_func, epoch)
-    save_checkpoint(model, epoch, TIME_ID, weights_path)
+    save_checkpoint(model, epoch, "end", TIME_ID, weights_path)
     test(model, epoch, "end")
     

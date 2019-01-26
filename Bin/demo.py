@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import imsave
-from model_vdsr import SmallVDSR_16x, VDSR
+from model_vdsr_v2 import Autoencoders
 import cv2
 pjoin = os.path.join
 
@@ -68,10 +68,7 @@ if cuda:
 
 if opt.mode:
   assert(opt.model != "")
-  if opt.mode == "16x":
-    model = SmallVDSR_16x(opt.model)
-  elif opt.mode == "original":
-    model = VDSR(opt.model)
+  model = Autoencoders[opt.mode](None, opt.model).e2
 else:
   model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 
@@ -97,6 +94,8 @@ def feature_display(fms, mark, save_feature=False):
       model_mark = "F16"  
     elif opt.mode == "original":
       model_mark = "F64"
+    elif opt.mode == "F8":
+      model_mark = "F8"
     else:
       print("mode wrong")
       exit(1)
