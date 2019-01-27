@@ -34,7 +34,7 @@ def main():
   # Training settings
   parser = argparse.ArgumentParser(description="PyTorch VDSR")
   parser.add_argument("--batchSize", type=int, default=128, help="Training batch size")
-  parser.add_argument("--nEpochs", type=int, default=1, help="Number of epochs to train for")
+  parser.add_argument("--nEpochs", type=int, default=50, help="Number of epochs to train for")
   parser.add_argument("--lr", type=float, default=0.1, help="Learning Rate. Default=0.1")
   parser.add_argument("--step", type=int, default=10, help="Sets the learning rate to the initial LR decayed by momentum every n epochs, Default: n=10")
   parser.add_argument("--cuda", action="store_true", help="Use cuda?")
@@ -53,9 +53,12 @@ def main():
   parser.add_argument("-p", "--project_name", type=str)
   parser.add_argument("--debug", action="store_true")
   parser.add_argument("--sharpen", action="store_true")
+  parser.add_argument("--drop_ratio", type=float, default=0)
   opt = parser.parse_args()
   
   # Set up directories and logs etc
+  if opt.debug:
+    opt.project_name = "test"
   project_path = pjoin("../Experiments", opt.project_name)
   rec_img_path = pjoin(project_path, "reconstructed_images")
   weights_path = pjoin(project_path, "weights") # to save torch model
@@ -95,7 +98,7 @@ def main():
   training_data_loader = DataLoader(dataset=train_set, num_workers=opt.threads, batch_size=opt.batchSize, shuffle=True)
 
   logprint("===> Building model", log)
-  model = Net(opt.num_filter, opt.num_block, opt.sharpen) ##### creat model
+  model = Net(opt.num_filter, opt.num_block, opt.sharpen, opt.drop_ratio) ##### creat model
   criterion = nn.MSELoss(size_average=False)
 
   logprint("===> Setting GPU", log)
@@ -126,6 +129,7 @@ def main():
   optimizer = optim.SGD(model.parameters(), lr=opt.lr, momentum=opt.momentum, weight_decay=opt.weight_decay)
 
   logprint("===> Training", log)
+  test(model, opt, log)
   for epoch in range(opt.start_epoch, opt.nEpochs + 1):
     train(training_data_loader, optimizer, model, criterion, epoch, opt, log)
     save_checkpoint(model, epoch, log, weights_path, TIME_ID)
@@ -191,7 +195,7 @@ def train(training_data_loader, optimizer, model, criterion, epoch, opt, log):
     loss = criterion(model(input), target)
     optimizer.zero_grad()
     loss.backward() 
-    nn.utils.clip_grad_norm(model.parameters(), opt.clip) 
+    nn.utils.clip_grad_norm_(model.parameters(), opt.clip) 
     optimizer.step()
 
     if iteration % 100 == 0:

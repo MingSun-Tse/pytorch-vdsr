@@ -4,13 +4,20 @@ from math import sqrt
 import numpy as np
 
 class Conv_ReLU_Block(nn.Module):
-    def __init__(self, num_filter=64):
+    def __init__(self, num_filter=64, drop_ratio=0):
       super(Conv_ReLU_Block, self).__init__()
+      self.drop_ratio = drop_ratio
       self.conv = nn.Conv2d(in_channels=num_filter, out_channels=num_filter, kernel_size=3, stride=1, padding=1, bias=False)
       self.relu = nn.ReLU(inplace=True)
+      if drop_ratio:
+        self.dropout = nn.Dropout2d(p=drop_ratio)
 
     def forward(self, x):
-      return self.relu(self.conv(x))
+      if self.drop_ratio:
+        return self.dropout(self.relu(self.conv(x)))
+      else:
+        return self.relu(self.conv(x))
+      
       
 class Sharpen_Block(nn.Module):
   def __init__(self):
@@ -19,19 +26,21 @@ class Sharpen_Block(nn.Module):
     self.conv = nn.Conv2d(1,1,3,1,0, bias=False)
     self.conv.weight = nn.Parameter(torch.from_numpy(np.array([[[[0, -0.4, 0], [0, 2.6, 0], [0, -0.4, 0]]]])).float())
     self.conv.weight.requires_grad = False
-    
   def forward(self, x):
     return self.conv(self.pad(x))
-      
+
+    
 class Net(nn.Module):
-    def __init__(self, num_filter=64, num_block=18, sharpen=False):
+    def __init__(self, num_filter=64, num_block=18, sharpen=False, drop_ratio=False):
       super(Net, self).__init__()
       self.sharpen = sharpen
+      self.drop_ratio = drop_ratio
       self.residual_layer = self.make_layer(Conv_ReLU_Block, num_block, num_filter)
       self.input  = nn.Conv2d(in_channels=1, out_channels=num_filter, kernel_size=3, stride=1, padding=1, bias=False)
       self.output = nn.Conv2d(in_channels=num_filter, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
       self.relu = nn.ReLU(inplace=True)
-      self.sharpen_layer = Sharpen_Block()
+      if sharpen:
+        self.sharpen_layer = Sharpen_Block()
       
       # normalize the weights
       for m in self.modules():
@@ -45,7 +54,7 @@ class Net(nn.Module):
     def make_layer(self, block, num_block, num_filter):
       layers = []
       for _ in range(num_block):
-        layers.append(block(num_filter))    
+        layers.append(block(num_filter, self.drop_ratio))    
       return nn.Sequential(*layers)
 
     def forward(self, x):

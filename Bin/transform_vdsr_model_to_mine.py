@@ -11,7 +11,7 @@ original_vdsr_model = sys.argv[1]
 vdsr_params = list(torch.load(original_vdsr_model)["model"].named_parameters())
 
 #--------------------------------
-encoder = SmallVDSR_F8() ### Change this to your demand!!!
+encoder = VDSR() ### Change this to your demand!!!
 #--------------------------------
 params = encoder.named_parameters()
 dict_params = dict(params)

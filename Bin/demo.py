@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import imsave
-from model_vdsr_v2 import Autoencoders
+from model_vdsr_v2 import Autoencoders, VDSR
 import cv2
 pjoin = os.path.join
 
@@ -68,7 +68,10 @@ if cuda:
 
 if opt.mode:
   assert(opt.model != "")
-  model = Autoencoders[opt.mode](None, opt.model).e2
+  if opt.mode == "original":
+    model = VDSR(opt.model)
+  else:
+    model = Autoencoders[opt.mode](None, opt.model).e2
 else:
   model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 
@@ -112,13 +115,13 @@ def feature_display(fms, mark, save_feature=False):
   norm_resi = matplotlib.colors.Normalize(vmin=-0.5, vmax=0.5)
   cmap = matplotlib.cm.jet
   for cnt in range(len(fms)):
-    norm = norm_resi if cnt == len(fms)-1 else norm_feat
+    # norm = norm_resi if cnt == len(fms)-1 else norm_feat
     print("visualizing layer %s" % cnt)
     fm = fms[cnt][0].cpu().data.numpy()
     num_channel = fm.shape[0]
     for i in range(num_channel):
       channel = fm[i]
-      plt.imshow(channel, cmap=cmap, norm=norm)
+      plt.imshow(channel, cmap=cmap)
       plt.colorbar()
       plt.title("layer{}_fm{}.png".format(cnt, i))
       plt.savefig("{}/layer{}_fm{}_{}.png".format(opt.out_dir, cnt, i, mark))

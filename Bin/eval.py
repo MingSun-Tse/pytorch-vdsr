@@ -38,7 +38,7 @@ if opt.mode:
     model = SmallVDSR_16x(opt.model)
   elif "F8" in opt.mode:
     model = SmallVDSR_F8(opt.model)
-  elif "original":
+  elif "original" in opt.mode:
     model = VDSR(opt.model)
 else:
   model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
