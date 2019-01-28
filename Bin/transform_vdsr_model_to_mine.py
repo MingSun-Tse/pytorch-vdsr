@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import vdsr
-from model_vdsr_v2 import VDSR, SmallVDSR_16x, SmallVDSR_F8
+from model_vdsr_v2 import VDSR, SmallVDSR_16x, SmallVDSR_F8, VDSR_F64_B6
 import sys
 
 """
@@ -11,14 +11,14 @@ original_vdsr_model = sys.argv[1]
 vdsr_params = list(torch.load(original_vdsr_model)["model"].named_parameters())
 
 #--------------------------------
-encoder = VDSR() ### Change this to your demand!!!
+encoder = VDSR_F64_B6() ### Change this to your demand!!!
 #--------------------------------
 params = encoder.named_parameters()
 dict_params = dict(params)
 for i in range(len(vdsr_params)):
   original_tensor_name, tensor_data = vdsr_params[i][0], vdsr_params[i][1]
   if original_tensor_name == "output.weight":
-    new_tensor_name = "conv20.weight"
+    new_tensor_name = "conv{}.weight".format(len(vdsr_params))
   elif original_tensor_name == "input.weight":
     new_tensor_name = "conv1.weight"
   else:
