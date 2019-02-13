@@ -4,7 +4,7 @@ from torch.autograd import Variable
 import numpy as np
 import time, math, glob
 import scipy.io as sio
-from model_vdsr_v2 import SmallVDSR_16x, VDSR, SmallVDSR_F8
+from model_vdsr_v2 import SmallVDSR_16x, VDSR, SmallVDSR_F8, VDSR_F64B6
 
 parser = argparse.ArgumentParser(description="PyTorch VDSR Eval")
 parser.add_argument("--cuda", action="store_true", help="use cuda?")
@@ -13,16 +13,15 @@ parser.add_argument("--dataset", default="../Data/test_data/Set5", type=str, hel
 parser.add_argument("--gpus", default=0, type=int, help="gpu ids (default: 0)")
 parser.add_argument("--mode", default="")
 
-
 def PSNR(pred, gt, shave_border=0):
-    height, width = pred.shape[:2]
-    pred = pred[shave_border:height - shave_border, shave_border:width - shave_border]
-    gt = gt[shave_border:height - shave_border, shave_border:width - shave_border]
-    imdff = pred - gt
-    rmse = math.sqrt(np.mean(imdff ** 2))
-    if rmse == 0:
-        return 100
-    return 20 * math.log10(255.0 / rmse)
+  height, width = pred.shape[:2]
+  pred = pred[shave_border:height - shave_border, shave_border:width - shave_border]
+  gt = gt[shave_border:height - shave_border, shave_border:width - shave_border]
+  imdff = pred - gt
+  rmse = math.sqrt(np.mean(imdff ** 2))
+  if rmse == 0:
+    return 100
+  return 20 * math.log10(255.0 / rmse)
 
 opt = parser.parse_args()
 cuda = opt.cuda
@@ -40,6 +39,8 @@ if opt.mode:
     model = SmallVDSR_F8(opt.model)
   elif "original" in opt.mode:
     model = VDSR(opt.model)
+  elif "F64B6" in opt.mode:
+    model = VDSR_F64B6(opt.model)
 else:
   model = torch.load(opt.model, map_location=lambda storage, loc: storage)["model"]
 

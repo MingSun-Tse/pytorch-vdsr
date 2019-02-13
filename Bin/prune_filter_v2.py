@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import glob
 import scipy.io as sio
 import math
-import re
 # torch
 import torch
 import torch.nn as nn
@@ -33,12 +32,10 @@ from dataset import DatasetFromHdf5 # vdsr data loader
 parser = argparse.ArgumentParser(description="VDSR Compression")
 parser.add_argument('-m', '--mode', type=str)
 parser.add_argument('--model', type=str)
-parser.add_argument('--prune_mode', type=str)
-parser.add_argument('--prune_index', type=str)
 opt = parser.parse_args()
 
 prune_ratio = {
-"conv1": 0,
+"conv1": 11,
 "conv2": 0,
 "conv3": 0,
 "conv4": 0,
@@ -58,16 +55,6 @@ prune_ratio = {
 "conv18": 0,
 "conv19": 0,
 }
-
-prune_index = {}
-tmp = opt.prune_index.split("-")
-for t in tmp:
-  layer, index = t.split(":")
-  kk = []
-  index = [int(ix) for ix in re.split("[\[,\]]", index) if ix.isdigit()]
-  prune_index[layer] = index
-print(prune_index)
-
 if opt.mode in ["F16", "16x"]:
   model = SmallVDSR_16x(opt.model)
 elif opt.mode == "original":
@@ -82,18 +69,14 @@ for p in model.named_parameters():
   weight = weight.data.cpu().numpy()
   num_filter = weight.shape[0]
   if num_filter == 1: continue
-  if opt.prune_mode == "ratio":
-    w_sum = np.sum(np.abs(weight.reshape(num_filter, -1)), axis=1)
-    print("\n" + "*"*20, layer_name)
-    print(np.sort(w_sum))
-    order = np.argsort(w_sum)[:prune_ratio[layer_name.split(".weight")[0]]]
-    weight[order] = 0
-  elif opt.prune_mode == "direct_set":
-    layer_name2 = layer_name.split(".weight")[0]
-    if layer_name2 in prune_index:
-      index = prune_index[layer_name2]
-      print(index)
-      weight[index] = 0
+  w_sum = np.sum(np.abs(weight.reshape(num_filter, -1)), axis=1)
+  print("\n" + "*"*20, layer_name)
+  print(np.sort(w_sum))
+  order = np.argsort(w_sum)[:prune_ratio[layer_name.split(".weight")[0]]]
+  weight[order] = 0
   dict_param[layer_name].data.copy_(torch.from_numpy(weight))
 torch.save(dict_param, "pruned_model.pth")
+
+
+
   

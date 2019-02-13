@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import imsave
-from model_vdsr_v2 import Autoencoders, VDSR
+from model_vdsr_v2 import Autoencoders, VDSR, VDSR_F64B6
 import cv2
 pjoin = os.path.join
 
@@ -70,6 +70,8 @@ if opt.mode:
   assert(opt.model != "")
   if opt.mode == "original":
     model = VDSR(opt.model)
+  elif opt.mode == "F64B6":
+    model = VDSR_F64B6(opt.model)
   else:
     model = Autoencoders[opt.mode](None, opt.model).e2
 else:
